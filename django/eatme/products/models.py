@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from company.models import Company
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 class Products(models.Model):
     company=models.ForeignKey(
@@ -17,11 +18,18 @@ class Products(models.Model):
     description = models.TextField(verbose_name="Описание")
     price=models.DecimalField(verbose_name="Цена",max_digits=10, decimal_places=2,blank=True,null=True)
     created=models.DateTimeField(auto_now_add=True,verbose_name="Дата создания")
+    discount = models.PositiveSmallIntegerField(default=0,verbose_name='Процент скидки',validators=[MinValueValidator(0), MaxValueValidator(100)])
+    class Type(models.TextChoices):
+        HOT='hot','горячая'
+        LONG='long','долгосрочная'
+    type=models.CharField(verbose_name='Тип продукта',max_length=20,choices=Type.choices,default=Type.HOT)
     def image_url(self):
         if self.image:
             return f'{settings.WEBSITE_URL}{self.image.url}'
         else:
             return ''
+    def discount_price(self):
+        return self.price - (self.price * self.discount / 100)
     class Meta:
         ordering=('name',)
         verbose_name='Продукт'

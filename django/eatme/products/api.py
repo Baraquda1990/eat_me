@@ -7,7 +7,7 @@ class ProductsList(ListAPIView):
     serializer_class=ProductsListSerializer
     permission_classes=[AllowAny]
     def get_queryset(self):
-        queryset=Products.objects.all().order_by('created')
+        queryset=Products.objects.all().order_by('created').select_related('company')
         return queryset
 
 class ProductsDetail(RetrieveAPIView):

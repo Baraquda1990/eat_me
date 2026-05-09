@@ -10,6 +10,8 @@ class Company(models.Model):
     address = models.CharField(max_length=255, verbose_name="Адрес")
     created=models.DateTimeField(auto_now_add=True,verbose_name="Дата создания")
     description = models.TextField(verbose_name="Описание компании",null=True,blank=True)
+    open_time = models.TimeField(null=True,blank=True,verbose_name="Время открытия")
+    close_time = models.TimeField(null=True,blank=True,verbose_name="Время закрытия")
     def image_url(self):
         if self.image:
             return f'{settings.WEBSITE_URL}{self.image.url}'

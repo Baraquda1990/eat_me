@@ -5,13 +5,13 @@ from company.models import Company
 class CompanyFromProductsListSerializer(serializers.ModelSerializer):
     class Meta:
         model=Company
-        fields=['image_url','address','slug']
+        fields=['name','image_url','address','slug','open_time','close_time']
 
 class ProductsListSerializer(serializers.ModelSerializer):
     company=CompanyFromProductsListSerializer(many=False,read_only=True)
     class Meta:
         model=Products
-        fields=['name','image_url','slug','price','discount_price','type','company']
+        fields=['name','image_url','slug','description','price','discount_price','type','company']
 
 class ProductsDetailSerializer(serializers.ModelSerializer):
     '''company = serializers.SlugRelatedField(

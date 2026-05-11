@@ -44,9 +44,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     "corsheaders",
     'rest_framework',
+    'drf_spectacular',
     'djoser',
     'company',
     'products',
+    'tag',
 ]
 
 MIDDLEWARE = [
@@ -108,6 +110,7 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 DJOSER = {
@@ -115,6 +118,20 @@ DJOSER = {
     'USER_CREATE_PASSWORD_RETYPE':False,
     "LOGIN_FIELD": "username",
     'USER_CREATE_PASSWORD_RETYPE':True
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "API для приложения под кодовым названием 'EAT_ME'",
+    "DESCRIPTION": "API эндпоинты приложения заказа продуктов и еды",
+    "VERSION": "1.0.0",
+
+    # (необязательно, но полезно)
+    "CONTACT": {
+        "email": "damir.gilmanov2015@yandex.ru",
+    },
+    "LICENSE": {
+        "name": "MIT License",
+    },
 }
 
 # Password validation

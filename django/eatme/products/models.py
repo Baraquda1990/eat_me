@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 from company.models import Company
 from django.core.validators import MinValueValidator, MaxValueValidator
+from tag.models import Tag
 
 class Products(models.Model):
     company=models.ForeignKey(
@@ -12,6 +13,12 @@ class Products(models.Model):
         related_name='products',
         verbose_name='Компания' 
         )
+    tag=models.ManyToManyField(
+        Tag,
+        related_name='products',
+        verbose_name='Тег',
+        blank=True
+    )
     name=models.CharField(max_length=100,verbose_name="Название продукта")
     slug=models.SlugField(verbose_name='URL',max_length=255,blank=True,unique=True,null=True)
     image=models.ImageField(upload_to="uploads/products")

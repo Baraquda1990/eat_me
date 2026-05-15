@@ -11,15 +11,21 @@ class ProductsPagination(LimitOffsetPagination):
 
 @extend_schema(
     description="""
-    Получить список товаров. 
+    <h3>Получить список товаров</h3>
+
     Можно использовать:
-    - ?limit=1&offset=0 
-    для догрузки содермого с помощью LimitOffsetPagination. 
-    
+
+    <ul>
+    <li>?limit=1&offset=0 — для догрузки содержимого с помощью LimitOffsetPagination</li>
+    </ul>
+
     Также можно добавить:
-    - &tag=Название_тега (для сортировки товаров по тегам)
-    - &company=Название_компании (для сортировки товаров по компинии)
-    """
+
+    <ul>
+    <li><span style="color:blue">?tag=Название_тега</span> — фильтрация товаров по тегам</li>
+    <li><span style="color:blue">?company=Название_компании</span> — фильтрация товаров по компании</li>
+    </ul>
+"""
 )
 class ProductsList(ListAPIView):
     serializer_class=ProductsListSerializer

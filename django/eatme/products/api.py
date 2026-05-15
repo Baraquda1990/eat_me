@@ -10,7 +10,16 @@ class ProductsPagination(LimitOffsetPagination):
     max_limit=100
 
 @extend_schema(
-    description="Получить список товаров. Можно использовать ?limit=1&offset=0 для догрузки содермого с помощью LimitOffsetPagination. Также можно добавить &tag=Название_тега для сортировки товаров по тегам."
+    description="""
+    ### Получить список товаров. 
+    Можно использовать:
+    - ?limit=1&offset=0 
+    для догрузки содермого с помощью LimitOffsetPagination. 
+    
+    Также можно добавить:
+    - &tag=Название_тега (для сортировки товаров по тегам)
+    - &company=Название_компании (для сортировки товаров по компинии)
+    """
 )
 class ProductsList(ListAPIView):
     serializer_class=ProductsListSerializer
@@ -20,6 +29,9 @@ class ProductsList(ListAPIView):
         tag=self.request.GET.get('tag')
         if tag:
             queryset=queryset.filter(tag__slug=tag)
+        company=self.request.GET.get('company')
+        if company:
+            queryset=queryset.filter(company__slug=company)
         return queryset
     pagination_class=ProductsPagination
     

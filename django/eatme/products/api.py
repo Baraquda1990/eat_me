@@ -11,7 +11,7 @@ class ProductsPagination(LimitOffsetPagination):
 
 @extend_schema(
     description="""
-    ### Получить список товаров. 
+    Получить список товаров. 
     Можно использовать:
     - ?limit=1&offset=0 
     для догрузки содермого с помощью LimitOffsetPagination. 

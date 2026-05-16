@@ -12,7 +12,7 @@ class ProductsListSerializer(serializers.ModelSerializer):
     tag=TagSerializer(many=True,read_only=True)
     class Meta:
         model=Products
-        fields=['name','image_url','slug','description','price','discount_price','type','company','tag']
+        fields=['name','image_url','slug','description','price','get_discount_price','type','company','tag']
 
 class ProductsDetailSerializer(serializers.ModelSerializer):
     '''company = serializers.SlugRelatedField(
@@ -24,4 +24,4 @@ class ProductsDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model=Products
         #fields='__all__'
-        fields=['company','name','slug','description','price','discount_price','image_url','type','tag']
+        fields=['company','name','slug','description','price','get_discount_price','image_url','type','tag']

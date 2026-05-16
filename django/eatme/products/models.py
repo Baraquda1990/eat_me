@@ -35,7 +35,7 @@ class Products(models.Model):
             return f'{settings.WEBSITE_URL}{self.image.url}'
         else:
             return ''
-    def discount_price(self):
+    def get_discount_price(self):
         return self.price - (self.price * self.discount / 100)
     class Meta:
         ordering=('name',)

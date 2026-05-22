@@ -5,4 +5,4 @@ class TagSerializer(serializers.ModelSerializer):
     products_count=serializers.IntegerField(read_only=True)
     class Meta:
         model=Tag
-        fields=['name','slug','products_count']
+        fields=['name','slug','products_count','image_url']

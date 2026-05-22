@@ -28,7 +28,7 @@ class ProductsList(ListAPIView):
                 output_field=DecimalField(max_digits=10, decimal_places=2)
             )
         )
-
+        queryset=queryset.filter(count__gt=0)
         tag=self.request.GET.get('tag')
         if tag:
             queryset=queryset.filter(tag__slug=tag)

@@ -26,6 +26,7 @@ class Products(models.Model):
     price=models.DecimalField(verbose_name="Цена",max_digits=10, decimal_places=2,blank=True,null=True)
     created=models.DateTimeField(auto_now_add=True,verbose_name="Дата создания")
     discount = models.PositiveSmallIntegerField(default=0,verbose_name='Процент скидки',validators=[MinValueValidator(0), MaxValueValidator(100)])
+    count=models.PositiveIntegerField(default=1,verbose_name='Количество товара')
     class Type(models.TextChoices):
         HOT='hot','горячая'
         LONG='long','долгосрочная'
@@ -35,6 +36,7 @@ class Products(models.Model):
             return f'{settings.WEBSITE_URL}{self.image.url}'
         else:
             return ''
+    @property
     def get_discount_price(self):
         return self.price - (self.price * self.discount / 100)
     class Meta:

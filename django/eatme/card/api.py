@@ -72,6 +72,22 @@ class CheckoutApi(UpdateAPIView):
 
     def update(self, request, *args, **kwargs):
         cart = self.get_object()
+        # Проверка наличия товара
+        for item in cart.items.all():
+            if item.quantity > item.product.count:
+                return Response(
+                    {
+                        "error": f"Недостаточно товара: {item.product.name}",
+                        "available": item.product.count
+                    },
+                    status=400
+                )
+
+        # Уменьшаем количество товара
+        for item in cart.items.all():
+            product = item.product
+            product.count -= item.quantity
+            product.save()
         cart.status = 'paided'
         cart.save()
         Card.objects.create(user=request.user, status='pending')

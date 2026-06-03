@@ -1,11 +1,14 @@
-from rest_framework.generics import ListAPIView,RetrieveAPIView
+from rest_framework.generics import ListAPIView,RetrieveAPIView,CreateAPIView,RetrieveUpdateAPIView,DestroyAPIView
 from rest_framework.permissions import AllowAny
 from .models import Products
-from .serializers import ProductsDetailSerializer,ProductsListSerializer
+from .serializers import ProductsDetailSerializer,ProductsListSerializer,ProductsSerializer
 from rest_framework.pagination import LimitOffsetPagination
 from drf_spectacular.utils import extend_schema
 from rest_framework import filters
 from django.db.models import F, DecimalField, ExpressionWrapper
+from rest_framework.permissions import BasePermission
+from rest_framework.exceptions import PermissionDenied
+from profiles.models import OrgProf
 
 class ProductsPagination(LimitOffsetPagination):
     default_limit=10
@@ -46,3 +49,74 @@ class ProductsDetail(RetrieveAPIView):
     permission_classes=[AllowAny]
     serializer_class=ProductsDetailSerializer
     lookup_field='slug'
+
+class IsSeller(BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated and
+            hasattr(request.user, 'profile') and
+            request.user.profile.type_user == 'seller'
+        )
+@extend_schema(
+    description="Создание продукта"
+)
+class ProductsCreate(CreateAPIView):
+    serializer_class = ProductsSerializer
+    permission_classes = [IsSeller]
+
+    def perform_create(self, serializer):
+        user = self.request.user
+
+        company = serializer.validated_data['company']
+
+        # 🔒 проверка: принадлежит ли компания этому продавцу
+        if not OrgProf.objects.filter(user=user, company=company).exists():
+            raise PermissionDenied("Вы не владелец этой компании")
+
+        serializer.save()
+
+@extend_schema(
+    description="Список продуктов созданных компанией"
+)
+class MyProductsList(ListAPIView):
+    serializer_class = ProductsListSerializer
+    permission_classes = [IsSeller]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        return Products.objects.filter(
+            company__orgprof__user=user
+        ).select_related('company').prefetch_related('tag')
+@extend_schema(
+    description="Изменение продукта"
+)
+class MyProductUpdate(RetrieveUpdateAPIView):
+    serializer_class = ProductsSerializer
+    permission_classes = [IsSeller]
+    lookup_field = 'slug'
+
+    def get_queryset(self):
+        return Products.objects.filter(
+            company__orgprof__user=self.request.user
+        )
+
+    def perform_update(self, serializer):
+        obj = self.get_object()
+
+        if obj.company.orgprof.user != self.request.user:
+            raise PermissionDenied("Нет доступа")
+
+        serializer.save()
+@extend_schema(
+    description="Удаление продукта"
+)
+class MyProductDelete(DestroyAPIView):
+    serializer_class = ProductsSerializer
+    permission_classes = [IsSeller]
+    lookup_field = 'slug'
+
+    def get_queryset(self):
+        return Products.objects.filter(
+            company__orgprof__user=self.request.user
+        )

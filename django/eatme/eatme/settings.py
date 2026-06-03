@@ -50,7 +50,8 @@ INSTALLED_APPS = [
     'products',
     'tag',
     'favourites',
-    'card'
+    'card',
+    'profiles'
 ]
 
 MIDDLEWARE = [

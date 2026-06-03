@@ -73,7 +73,7 @@ class CheckoutApi(UpdateAPIView):
     def update(self, request, *args, **kwargs):
         cart = self.get_object()
         # Проверка наличия товара
-        for item in cart.items.all():
+        for item in cart.card_item.all():
             if item.quantity > item.product.count:
                 return Response(
                     {
@@ -84,7 +84,7 @@ class CheckoutApi(UpdateAPIView):
                 )
 
         # Уменьшаем количество товара
-        for item in cart.items.all():
+        for item in cart.card_item.all():
             product = item.product
             product.count -= item.quantity
             product.save()

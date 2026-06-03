@@ -25,3 +25,23 @@ class ProductsDetailSerializer(serializers.ModelSerializer):
         model=Products
         #fields='__all__'
         fields=['company','name','slug','description','price','get_discount_price','image_url','type','tag','count']
+
+class ProductsSerializer(serializers.ModelSerializer):
+    company = serializers.SlugRelatedField(
+        slug_field='slug',
+        queryset=Company.objects.all()
+    )
+    class Meta:
+        model = Products
+        fields = [
+            'company',
+            'name',
+            'slug',
+            'image',
+            'description',
+            'price',
+            'discount',
+            'count',
+            'type',
+            'tag'
+        ]

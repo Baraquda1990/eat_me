@@ -1,13 +1,16 @@
-from rest_framework.generics import RetrieveAPIView,ListAPIView
+from rest_framework.generics import RetrieveAPIView,ListAPIView,CreateAPIView,RetrieveUpdateAPIView
 from rest_framework.permissions import AllowAny
 from .models import Company
-from .serializers import CompanySerializer
+from .serializers import CompanySerializer,CompanyCreateSerializer
 from drf_spectacular.utils import extend_schema
 from math import radians
 from django.db.models import (
     F, Value, FloatField, ExpressionWrapper
 )
 from django.db.models.functions import ACos, Cos, Sin, Radians
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
+from profiles.models import OrgProf
 
 @extend_schema(
     description="Детальная информация о компании."
@@ -46,3 +49,57 @@ class CompanyList(ListAPIView):
         return qs.annotate(
             distance=ExpressionWrapper(distance, output_field=FloatField())
         ).order_by('distance')
+
+@extend_schema(
+    description="Создание компании"
+)
+class CompanyCreate(CreateAPIView):
+    serializer_class = CompanyCreateSerializer
+    permission_classes = [IsAuthenticated]
+    def perform_create(self, serializer):
+        if not hasattr(self.request.user, 'profile'):
+            raise PermissionDenied('Профиль не найден')
+        if self.request.user.profile.type_user != 'seller':
+            raise PermissionDenied(
+                'Создавать компании могут только продавцы'
+            )
+        company = serializer.save()
+        OrgProf.objects.create(
+            user=self.request.user,
+            company=company
+        )
+@extend_schema(
+    description="Список созданных компаний продавцом"
+)
+class MyCompanyList(ListAPIView):
+    serializer_class = CompanySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if not hasattr(user, 'profile'):
+            raise PermissionDenied('Профиль не найден')
+
+        if user.profile.type_user != 'seller':
+            raise PermissionDenied('Только продавцы имеют доступ')
+
+        return Company.objects.filter(orgprof__user=user)
+@extend_schema(
+    description="Детальная информация о компании и изменение компании"
+)
+class MyCompanyDetailUpdate(RetrieveUpdateAPIView):
+    serializer_class = CompanySerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'slug'
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if not hasattr(user, 'profile'):
+            raise PermissionDenied('Профиль не найден')
+
+        if user.profile.type_user != 'seller':
+            raise PermissionDenied('Только продавцы имеют доступ')
+
+        return Company.objects.filter(orgprof__user=user)

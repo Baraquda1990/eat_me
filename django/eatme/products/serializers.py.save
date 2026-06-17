@@ -1,0 +1,103 @@
+from rest_framework import serializers
+from .models import Products
+from company.models import Company
+from tag.models import Tag
+from tag.serializers import TagSerializer
+
+
+class CompanyFromProductsListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Company
+        fields = [
+            'name',
+            'image_url',
+            'address',
+            'slug',
+            'open_time',
+            'close_time',
+            'latitude',
+            'longitude',
+            'description',
+            'phone',
+        ]
+
+
+class ProductsListSerializer(serializers.ModelSerializer):
+    company = CompanyFromProductsListSerializer(
+        many=False,
+        read_only=True
+    )
+    tag = TagSerializer(
+        many=True,
+        read_only=True
+    )
+
+    class Meta:
+        model = Products
+        fields = [
+            'name',
+            'image_url',
+            'slug',
+            'description',
+            'price',
+            'get_discount_price',
+            'type',
+            'company',
+            'tag',
+            'count',
+        ]
+
+
+class ProductsDetailSerializer(serializers.ModelSerializer):
+    company = CompanyFromProductsListSerializer(
+        many=False,
+        read_only=True
+    )
+    tag = TagSerializer(
+        many=True,
+        read_only=True
+    )
+
+    class Meta:
+        model = Products
+        fields = [
+            'company',
+            'name',
+            'slug',
+            'description',
+            'price',
+            'get_discount_price',
+            'image_url',
+            'type',
+            'tag',
+            'count',
+        ]
+
+
+class ProductsSerializer(serializers.ModelSerializer):
+    company = serializers.SlugRelatedField(
+        slug_field='slug',
+        queryset=Company.objects.all()
+    )
+
+    tag = serializers.SlugRelatedField(
+        slug_field='slug',
+        queryset=Tag.objects.all(),
+        many=True,
+        required=False
+    )
+
+    class Meta:
+        model = Products
+        fields = [
+            'company',
+            'name',
+            'slug',
+            'image',
+            'description',
+            'price',
+            'discount',
+            'count',
+            'type',
+            'tag',
+        ]

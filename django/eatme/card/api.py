@@ -10,6 +10,10 @@ from drf_spectacular.utils import extend_schema
 from profiles.models import OrgProf
 from notifications.models import Notification
 from notifications.services import send_push_to_user
+from notifications.tasks import create_review_reminder
+from django.db.models import Sum
+from rest_framework.views import APIView
+from reviews.models import Review
 
 
 @extend_schema(
@@ -101,7 +105,7 @@ class AddToCartApi(CreateAPIView):
 class CartUpdateApi(UpdateAPIView):
     serializer_class = CardSerializer
     permission_classes = [IsAuthenticated]
-    
+
     def get_object(self):
         return Card.objects.get(
             user=self.request.user,
@@ -115,7 +119,7 @@ class CartUpdateApi(UpdateAPIView):
 class CartRetrieveApi(RetrieveAPIView):
     serializer_class = CardSerializer
     permission_classes = [IsAuthenticated]
-    
+
     def get_object(self):
         cart, _ = Card.objects.get_or_create(
             user=self.request.user,
@@ -130,7 +134,7 @@ class CartRetrieveApi(RetrieveAPIView):
 class CheckoutApi(UpdateAPIView):
     serializer_class = CardSerializer
     permission_classes = [IsAuthenticated]
-    
+
     def get_object(self):
         return Card.objects.get(
             user=self.request.user,
@@ -172,7 +176,7 @@ class CheckoutApi(UpdateAPIView):
                         'buyer_username': request.user.username,
                     },
                 )
-                
+
                 # Отправляем push-уведомление продавцу
                 send_push_to_user(
                     user=seller.user,
@@ -184,13 +188,17 @@ class CheckoutApi(UpdateAPIView):
                     },
                 )
 
-        cart.status = 'paided' 
+        cart.status = 'paided'
         cart.save()
+
+        # Создаем напоминание об оценке после оформления заказа
+        create_review_reminder(cart)
+
         companies = set()
         for item in cart.card_item.all():
             if item.product and item.product.company:
                 companies.add(item.product.company)
-        
+
         for company in companies:
             company.successful_orders += 1
             company.save(update_fields=['successful_orders'])
@@ -205,7 +213,7 @@ class CheckoutApi(UpdateAPIView):
 )
 class RemoveCartItemApi(DestroyAPIView):
     permission_classes = [IsAuthenticated]
-    
+
     def get_object(self):
         return Card_item.objects.get(
             card__user=self.request.user,
@@ -220,11 +228,11 @@ class RemoveCartItemApi(DestroyAPIView):
 class UpdateQuantityApi(UpdateAPIView):
     serializer_class = UpdateQuantitySerializer
     permission_classes = [IsAuthenticated]
-    
+
     def update(self, request, *args, **kwargs):
         user = request.user
         product_slug = kwargs.get('slug')
-        
+
         try:
             item = Card_item.objects.get(
                 card__user=user,
@@ -236,7 +244,7 @@ class UpdateQuantityApi(UpdateAPIView):
                 {"error": "Товар не найден в корзине"},
                 status=404
             )
-        
+
         quantity = request.data.get('quantity')
         if quantity is None:
             return Response(
@@ -244,13 +252,13 @@ class UpdateQuantityApi(UpdateAPIView):
                 status=400
             )
         quantity = int(quantity)
-        
+
         if quantity <= 0:
             item.delete()
             return Response(
                 {"message": "Товар удалён"}
             )
-        
+
         product = item.product
         if quantity > product.count:
             return Response(
@@ -260,7 +268,7 @@ class UpdateQuantityApi(UpdateAPIView):
                 },
                 status=400
             )
-        
+
         item.quantity = quantity
         item.save()
 
@@ -281,3 +289,94 @@ class PastOrdersApi(ListAPIView):
             user=self.request.user,
             status='paided'
         ).order_by('-created')
+
+
+@extend_schema(description="Статистика продавца")
+class SellerStatsApi(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        companies = OrgProf.objects.filter(
+            user=request.user
+        ).values_list('company_id', flat=True)
+
+        if not companies:
+            return Response({
+                "total_sales": 0,
+                "orders_count": 0,
+                "sold_items": 0,
+                "rating": 0,
+                "reviews_count": 0,
+            })
+
+        items = Card_item.objects.filter(
+            card__status='paided',
+            product__company_id__in=companies,
+            product__isnull=False,
+        ).select_related('product', 'card')
+
+        total_sales = sum(item.price_by_quantity for item in items)
+        sold_items = items.aggregate(total=Sum('quantity'))['total'] or 0
+
+        orders_count = Card.objects.filter(
+            status='paided',
+            card_item__product__company_id__in=companies,
+        ).distinct().count()
+
+        reviews = Review.objects.filter(
+            company_id__in=companies,
+        )
+
+        rating_sum = sum(review.rating for review in reviews)
+        reviews_count = reviews.count()
+        rating = round(rating_sum / reviews_count, 1) if reviews_count else 0
+
+        return Response({
+            "total_sales": float(total_sales),
+            "orders_count": orders_count,
+            "sold_items": sold_items,
+            "rating": rating,
+            "reviews_count": reviews_count,
+        })
+
+
+@extend_schema(description="Продажи продавца")
+class SellerSalesApi(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        companies = OrgProf.objects.filter(
+            user=request.user
+        ).values_list('company_id', flat=True)
+
+        if not companies:
+            return Response([])
+
+        items = Card_item.objects.filter(
+            card__status='paided',
+            product__company_id__in=companies,
+            product__isnull=False,
+        ).select_related(
+            'card',
+            'card__user',
+            'product',
+            'product__company',
+        ).order_by('-card__created')
+
+        result = []
+
+        for item in items:
+            result.append({
+                'id': item.id,
+                'card_id': item.card.id,
+                'created': item.card.created,
+                'buyer': item.card.user.username if item.card.user else '',
+                'product_name': item.product.name,
+                'product_slug': item.product.slug,
+                'company_name': item.product.company.name,
+                'quantity': item.quantity,
+                'price': float(item.product.get_discount_price),
+                'total': float(item.price_by_quantity),
+            })
+
+        return Response(result)

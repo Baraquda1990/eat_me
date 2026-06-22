@@ -202,7 +202,7 @@ LOGIN_URL = '/api_eatme/admin2/login/'
 LOGIN_REDIRECT_URL = '/api_eatme/admin2/'
 
 CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_CREDENTIALS = False
 
 CORS_ALLOW_METHODS = [
     'DELETE',

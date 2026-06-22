@@ -11,6 +11,8 @@ class CardItemSerializer(serializers.ModelSerializer):
 class CardSerializer(serializers.ModelSerializer):
     items = CardItemSerializer(source='card_item', many=True, read_only=True)
     total_price = serializers.SerializerMethodField()
+    reviewed_company_ids = serializers.SerializerMethodField()
+    
     class Meta:
         model = Card
         fields = [
@@ -18,10 +20,22 @@ class CardSerializer(serializers.ModelSerializer):
             'status',
             'items',
             'created',
-            'total_price'
+            'total_price',
+            'reviewed_company_ids',
         ]
+    
     def get_total_price(self, obj):
         return sum(item.price_by_quantity for item in obj.card_item.all())
+    
+    def get_reviewed_company_ids(self, obj):
+        from reviews.models import Review
+        
+        return list(
+            Review.objects.filter(
+                card=obj,
+                user=obj.user,
+            ).values_list('company_id', flat=True)
+        )
 
 class AddToCartSerializer(serializers.Serializer):
     product_slug = serializers.SlugField()

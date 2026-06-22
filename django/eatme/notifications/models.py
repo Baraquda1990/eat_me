@@ -46,6 +46,7 @@ class Notification(models.Model):
         FAVORITE_STORE = 'favorite_store', 'Любимый магазин'
         REVIEW_REMINDER = 'review_reminder', 'Напоминание об оценке'
         NEW_NEARBY_PRODUCT = 'new_nearby_product', 'Новое предложение рядом'
+        RECOMMENDATION = 'recommendation', 'Персональная рекомендация'
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

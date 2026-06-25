@@ -125,9 +125,12 @@ REST_FRAMEWORK = {
 
 DJOSER = {
     'TOKEN_MODEL': None,
-    'USER_CREATE_PASSWORD_RETYPE':False,
-    "LOGIN_FIELD": "username",
-    'USER_CREATE_PASSWORD_RETYPE':True
+    'USER_CREATE_PASSWORD_RETYPE': True,
+    'LOGIN_FIELD': 'username',
+    'SERIALIZERS': {
+        'user_create': 'profiles.serializers.CustomUserCreateSerializer',
+        'user_create_password_retype': 'profiles.serializers.CustomUserCreateSerializer',
+    },
 }
 
 SPECTACULAR_SETTINGS = {

@@ -14,6 +14,7 @@ class Profile(models.Model):
     birth_date = models.DateField(null=True, blank=True, verbose_name='Дата рождения')
     phone = models.CharField(max_length=20, blank=True, verbose_name='Телефон')
     phone_verified = models.BooleanField(default=False, verbose_name='Телефон подтверждён')
+    address=models.CharField(max_length=250,blank=True,verbose_name='Адрес')
     
     class TypeUser(models.TextChoices):
         BUYER = 'buyer', 'покупатель'

@@ -361,6 +361,7 @@ class SellerSalesApi(APIView):
             'card__user',
             'product',
             'product__company',
+            'card__user__profile'
         ).order_by('-card__created')
 
         result = []
@@ -377,6 +378,8 @@ class SellerSalesApi(APIView):
                 'quantity': item.quantity,
                 'price': float(item.product.get_discount_price),
                 'total': float(item.price_by_quantity),
+                'phone': item.card.user.profile.phone,
+                'address': item.card.user.profile.address
             })
 
         return Response(result)

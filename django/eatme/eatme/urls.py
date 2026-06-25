@@ -40,6 +40,7 @@ urlpatterns = [
     path('api/',include('card.urls')),
     path('api/', include('notifications.urls')),
     path('api/', include('reviews.urls')),
+    path('api/', include('profiles.urls')) 
 ]+static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 

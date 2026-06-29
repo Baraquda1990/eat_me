@@ -11,8 +11,18 @@ class TagsList(ListAPIView):
     serializer_class = TagSerializer
 
     def get_queryset(self):
+        product_type = self.request.query_params.get('type')
+
+        qs = Tag.objects.all()
+
+        if product_type in ['hot', 'long']:
+            qs = qs.filter(products__type=product_type)
+
         return (
-            Tag.objects.annotate(
-                products_count=Count('products')
-            ).order_by('-products_count')
+            qs.annotate(
+                products_count=Count('products', distinct=True)
+            )
+            .filter(products_count__gt=0)
+            .order_by('-products_count')
+            .distinct()
         )

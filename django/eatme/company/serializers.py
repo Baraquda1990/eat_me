@@ -28,6 +28,8 @@ class CompanySerializer(serializers.ModelSerializer):
             'reviews_count',
             'successful_orders',
             'company_score',
+            'instagram',
+            'facebook',
 
             'avg_quality',
             'avg_value',
@@ -75,6 +77,8 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
             'longitude',
             'address',
             'phone',
+            'instagram',
+            'facebook',
             'description',
             'open_time',
             'close_time',

@@ -42,5 +42,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             'bio',
             'birth_date',
             'phone',
-            'address'
+            'address',
+            'type_user',
         ]
+        read_only_fields = ['type_user']

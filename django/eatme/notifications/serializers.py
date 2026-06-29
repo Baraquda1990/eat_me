@@ -3,6 +3,8 @@ from rest_framework import serializers
 from tag.models import Tag
 from tag.serializers import TagSerializer
 from .models import DeviceToken, Notification, NotificationAlarm
+from company.models import Company  # 👈 ДОБАВЛЕН ИМПОРТ
+from company.serializers import CompanySerializer  # 👈 ДОБАВЛЕН ИМПОРТ
 
 
 class DeviceTokenSerializer(serializers.ModelSerializer):
@@ -39,6 +41,20 @@ class NotificationAlarmSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    # 👇 ДОБАВЛЕНЫ ПОЛЯ ДЛЯ КОМПАНИЙ
+    companies = serializers.SlugRelatedField(
+        slug_field='slug',
+        queryset=Company.objects.all(),
+        many=True,
+        required=False
+    )
+
+    companies_detail = CompanySerializer(
+        source='companies',
+        many=True,
+        read_only=True
+    )
+
     class Meta:
         model = NotificationAlarm
         fields = [
@@ -52,20 +68,29 @@ class NotificationAlarmSerializer(serializers.ModelSerializer):
             'longitude',
             'is_active',
             'created',
+            'companies',           # 👈 ДОБАВЛЕНО
+            'companies_detail',    # 👈 ДОБАВЛЕНО
         ]
+
         read_only_fields = ['id', 'created']
 
     def create(self, validated_data):
         tags = validated_data.pop('tags', [])
+        companies = validated_data.pop('companies', [])  # 👈 ДОБАВЛЕНО
+
         alarm = NotificationAlarm.objects.create(
             user=self.context['request'].user,
             **validated_data
         )
+
         alarm.tags.set(tags)
+        alarm.companies.set(companies)  # 👈 ДОБАВЛЕНО
+
         return alarm
 
     def update(self, instance, validated_data):
         tags = validated_data.pop('tags', None)
+        companies = validated_data.pop('companies', None)  # 👈 ДОБАВЛЕНО
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -74,5 +99,8 @@ class NotificationAlarmSerializer(serializers.ModelSerializer):
 
         if tags is not None:
             instance.tags.set(tags)
+
+        if companies is not None:  # 👈 ДОБАВЛЕНО
+            instance.companies.set(companies)
 
         return instance

@@ -1,7 +1,7 @@
-from rest_framework.generics import RetrieveAPIView,ListAPIView,CreateAPIView,RetrieveUpdateAPIView
+from rest_framework.generics import RetrieveAPIView, ListAPIView, CreateAPIView, RetrieveUpdateAPIView
 from rest_framework.permissions import AllowAny
 from .models import Company
-from .serializers import CompanySerializer,CompanyCreateSerializer
+from .serializers import CompanySerializer, CompanyCreateSerializer
 from drf_spectacular.utils import extend_schema
 from math import radians
 from django.db.models import (
@@ -16,10 +16,10 @@ from profiles.models import OrgProf
     description="Детальная информация о компании."
 )
 class CompanyDetail(RetrieveAPIView):
-    queryset=Company.objects.all()
-    permission_classes=[AllowAny]
-    serializer_class=CompanySerializer
-    lookup_field='slug'
+    queryset = Company.objects.all()
+    permission_classes = [AllowAny]
+    serializer_class = CompanySerializer
+    lookup_field = 'slug'
 
 @extend_schema(
     description="Список компаний. GET /company/?latitude=50.283&longitude=57.167 - сортировка по расстоянию"
@@ -30,6 +30,13 @@ class CompanyList(ListAPIView):
 
     def get_queryset(self):
         qs = Company.objects.all()
+        
+        # 👇 ДОБАВЛЕНА ФИЛЬТРАЦИЯ ПО ТИПУ ПРОДУКТА
+        product_type = self.request.query_params.get('type')
+        
+        if product_type in ['hot', 'long']:
+            qs = qs.filter(products__type=product_type).distinct()
+        
         lat = self.request.query_params.get('latitude')
         lon = self.request.query_params.get('longitude')
         if not lat or not lon:
@@ -56,6 +63,7 @@ class CompanyList(ListAPIView):
 class CompanyCreate(CreateAPIView):
     serializer_class = CompanyCreateSerializer
     permission_classes = [IsAuthenticated]
+    
     def perform_create(self, serializer):
         if not hasattr(self.request.user, 'profile'):
             raise PermissionDenied('Профиль не найден')
@@ -68,6 +76,7 @@ class CompanyCreate(CreateAPIView):
             user=self.request.user,
             company=company
         )
+
 @extend_schema(
     description="Список созданных компаний продавцом"
 )
@@ -85,6 +94,7 @@ class MyCompanyList(ListAPIView):
             raise PermissionDenied('Только продавцы имеют доступ')
 
         return Company.objects.filter(orgprof__user=user)
+
 @extend_schema(
     description="Детальная информация о компании и изменение компании"
 )

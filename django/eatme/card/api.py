@@ -1,7 +1,7 @@
-from rest_framework.generics import CreateAPIView,UpdateAPIView,RetrieveAPIView,DestroyAPIView,ListAPIView
+from rest_framework.generics import CreateAPIView, UpdateAPIView, RetrieveAPIView, DestroyAPIView, ListAPIView
 from rest_framework.permissions import IsAuthenticated
-from .models import Card,Card_item
-from .serializers import CardSerializer,AddToCartSerializer,UpdateQuantitySerializer
+from .models import Card, Card_item
+from .serializers import CardSerializer, AddToCartSerializer, UpdateQuantitySerializer
 from rest_framework.response import Response
 from rest_framework import status
 from products.models import Products
@@ -144,6 +144,29 @@ class CheckoutApi(UpdateAPIView):
     def update(self, request, *args, **kwargs):
         cart = self.get_object()
 
+        # Проверка для Deals
+        has_deals = cart.card_item.filter(
+            product__type='long'
+        ).exists()
+
+        if has_deals:
+            profile = getattr(request.user, 'profile', None)
+
+            phone = profile.phone.strip() if profile and profile.phone else ''
+            address = profile.address.strip() if profile and profile.address else ''
+
+            if not phone or not address:
+                return Response(
+                    {
+                        "error": "Для заказа Deals нужно указать телефон и адрес доставки",
+                        "required_fields": {
+                            "phone": not bool(phone),
+                            "address": not bool(address),
+                        }
+                    },
+                    status=400
+                )
+
         for item in cart.card_item.all():
             if item.quantity > item.product.count:
                 return Response(
@@ -154,37 +177,87 @@ class CheckoutApi(UpdateAPIView):
                     status=400
                 )
 
+        buyer_profile = getattr(request.user, 'profile', None)
+        buyer_phone = buyer_profile.phone if buyer_profile else ''
+        buyer_address = buyer_profile.address if buyer_profile else ''
+
+        # 👇 ИЗМЕНЕННЫЙ БЛОК: группировка по компаниям
+        items_by_company = {}
+
         for item in cart.card_item.all():
             product = item.product
             product.count -= item.quantity
             product.save()
 
-            sellers = OrgProf.objects.filter(company=product.company)
+            company = product.company
+
+            if company.id not in items_by_company:
+                items_by_company[company.id] = {
+                    'company': company,
+                    'items': [],
+                }
+
+            items_by_company[company.id]['items'].append(item)
+
+        for company_data in items_by_company.values():
+            company = company_data['company']
+            items = company_data['items']
+
+            sellers = OrgProf.objects.filter(company=company)
+
+            total_quantity = sum(item.quantity for item in items)
+            total_sum = sum(item.price_by_quantity for item in items)
+
+            product_names = ', '.join(
+                item.product.name for item in items[:3]
+            )
+
+            if len(items) > 3:
+                product_names += f' и ещё {len(items) - 3}'
 
             for seller in sellers:
-                # Создаём уведомление в БД
                 Notification.objects.create(
                     user=seller.user,
                     type='order_created',
                     title='Новый заказ',
-                    body=f'Купили товар: {product.name}. Количество: {item.quantity}',
+                    body=(
+                        f'{request.user.username} купил товаров: {total_quantity}. '
+                        f'{product_names}. '
+                        f'Тел: {buyer_phone or "не указан"}'
+                    ),
                     data={
-                        'product_slug': product.slug,
-                        'product_name': product.name,
-                        'quantity': item.quantity,
+                        'card_id': cart.id,
+                        'company_id': company.id,
+                        'company_name': company.name,
+                        'items_count': len(items),
+                        'total_quantity': total_quantity,
+                        'total': float(total_sum),
                         'buyer_id': request.user.id,
                         'buyer_username': request.user.username,
+                        'buyer_phone': buyer_phone,
+                        'buyer_address': buyer_address,
                     },
                 )
 
-                # Отправляем push-уведомление продавцу
                 send_push_to_user(
                     user=seller.user,
                     title='Новый заказ',
-                    body=f'Купили товар: {product.name}. Количество: {item.quantity}',
+                    body=(
+                        f'{request.user.username} купил товаров: {total_quantity}. '
+                        f'{product_names}. '
+                        f'Тел: {buyer_phone or "не указан"}'
+                    ),
                     data={
                         'type': 'order_created',
-                        'product_slug': product.slug,
+                        'card_id': str(cart.id),
+                        'company_id': str(company.id),
+                        'company_name': company.name,
+                        'items_count': str(len(items)),
+                        'total_quantity': str(total_quantity),
+                        'total': str(float(total_sum)),
+                        'buyer_username': request.user.username,
+                        'buyer_phone': buyer_phone,
+                        'buyer_address': buyer_address,
                     },
                 )
 
@@ -359,27 +432,140 @@ class SellerSalesApi(APIView):
         ).select_related(
             'card',
             'card__user',
+            'card__user__profile',
             'product',
             'product__company',
-            'card__user__profile'
         ).order_by('-card__created')
+
+        grouped = {}
+
+        for item in items:
+            card = item.card
+            product = item.product
+            company = product.company
+
+            key = f'{card.id}_{company.id}'
+
+            buyer_profile = getattr(card.user, 'profile', None)
+
+            if key not in grouped:
+                grouped[key] = {
+                    'id': key,
+                    'card_id': card.id,
+                    'company_id': company.id,
+                    'company_name': company.name,
+                    'created': card.created,
+                    'buyer': card.user.username if card.user else '',
+                    'buyer_phone': buyer_profile.phone if buyer_profile else '',
+                    'buyer_address': buyer_profile.address if buyer_profile else '',
+                    'items_count': 0,
+                    'total_quantity': 0,
+                    'total': 0,
+                    'products': [],
+                    'products_text': '',
+                }
+
+            item_total = item.price_by_quantity
+
+            grouped[key]['items_count'] += 1
+            grouped[key]['total_quantity'] += item.quantity
+            grouped[key]['total'] += float(item_total)
+
+            grouped[key]['products'].append({
+                'id': item.id,
+                'product_name': product.name,
+                'product_slug': product.slug,
+                'quantity': item.quantity,
+                'price': float(product.get_discount_price),
+                'total': float(item_total),
+            })
 
         result = []
 
-        for item in items:
-            result.append({
-                'id': item.id,
-                'card_id': item.card.id,
-                'created': item.card.created,
-                'buyer': item.card.user.username if item.card.user else '',
-                'product_name': item.product.name,
-                'product_slug': item.product.slug,
-                'company_name': item.product.company.name,
-                'quantity': item.quantity,
-                'price': float(item.product.get_discount_price),
-                'total': float(item.price_by_quantity),
-                'phone': item.card.user.profile.phone,
-                'address': item.card.user.profile.address
-            })
+        for sale in grouped.values():
+            product_names = [
+                product['product_name']
+                for product in sale['products']
+            ]
+
+            sale['products_text'] = ', '.join(product_names[:3])
+
+            if len(product_names) > 3:
+                sale['products_text'] += f' и ещё {len(product_names) - 3}'
+
+            result.append(sale)
+
+        result.sort(
+            key=lambda sale: sale['created'],
+            reverse=True,
+        )
 
         return Response(result)
+
+
+@extend_schema(description="Детали заказа продавца по корзине и компании")
+class SellerOrderDetailApi(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, card_id, company_id):
+        seller_has_company = OrgProf.objects.filter(
+            user=request.user,
+            company_id=company_id,
+        ).exists()
+
+        if not seller_has_company:
+            return Response(
+                {"error": "Нет доступа к этому заказу"},
+                status=403
+            )
+
+        items = Card_item.objects.filter(
+            card_id=card_id,
+            card__status='paided',
+            product__company_id=company_id,
+            product__isnull=False,
+        ).select_related(
+            'card',
+            'card__user',
+            'card__user__profile',
+            'product',
+            'product__company',
+        )
+
+        if not items.exists():
+            return Response(
+                {"error": "Заказ не найден"},
+                status=404
+            )
+
+        first_item = items.first()
+        buyer = first_item.card.user
+        buyer_profile = getattr(buyer, 'profile', None)
+
+        order_items = []
+        total = 0
+
+        for item in items:
+            item_total = item.price_by_quantity
+            total += item_total
+
+            order_items.append({
+                'id': item.id,
+                'product_name': item.product.name,
+                'product_slug': item.product.slug,
+                'quantity': item.quantity,
+                'price': float(item.product.get_discount_price),
+                'total': float(item_total),
+            })
+
+        return Response({
+            'card_id': first_item.card.id,
+            'company_id': company_id,
+            'company_name': first_item.product.company.name,
+            'created': first_item.card.created,
+            'buyer': buyer.username,
+            'buyer_phone': buyer_profile.phone if buyer_profile else '',
+            'buyer_address': buyer_profile.address if buyer_profile else '',
+            'items': order_items,
+            'total': float(total),
+        })

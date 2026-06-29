@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from company.models import Company
 
 from tag.models import Tag
 
@@ -110,6 +111,15 @@ class NotificationAlarm(models.Model):
         related_name='notification_alarms',
         verbose_name='Теги'
     )
+
+    companies = models.ManyToManyField(
+        Company,
+        blank=True,
+        related_name='notification_alarms',
+        verbose_name='Компании'
+    )
+
+    
     notify_at = models.DateTimeField(
         verbose_name='Когда уведомить'
     )

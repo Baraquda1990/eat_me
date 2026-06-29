@@ -37,6 +37,8 @@ else:
 
 WEBSITE_URL='http://127.0.0.1:8000'
 
+SITE_ID = 1
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -131,6 +133,9 @@ DJOSER = {
         'user_create': 'profiles.serializers.CustomUserCreateSerializer',
         'user_create_password_retype': 'profiles.serializers.CustomUserCreateSerializer',
     },
+    "PASSWORD_RESET_CONFIRM_URL": "api_eatme/password/reset/confirm/{uid}/{token}",
+    "SEND_ACTIVATION_EMAIL": False,
+    "SEND_CONFIRMATION_EMAIL": False,
 }
 
 SPECTACULAR_SETTINGS = {
@@ -228,3 +233,17 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
+
+#Настройка почты
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.yandex.ru'
+EMAIL_PORT = 465
+EMAIL_USE_SSL = True
+
+EMAIL_HOST_USER = 'damir.gilmanov2015@yandex.kz'
+EMAIL_HOST_PASSWORD = 'vtahhvrmhpzeoodd'
+
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+SERVER_EMAIL = EMAIL_HOST_USER
+EMAIL_ADMIN = EMAIL_HOST_USER

@@ -18,6 +18,9 @@ class Company(models.Model):
     description = models.TextField(verbose_name="Описание компании", null=True, blank=True)
     open_time = models.TimeField(null=True, blank=True, verbose_name="Время открытия")
     close_time = models.TimeField(null=True, blank=True, verbose_name="Время закрытия")
+    instagram = models.URLField(max_length=300, blank=True, null=True, verbose_name='Instagram')
+    facebook = models.URLField(max_length=300, blank=True, null=True, verbose_name='Facebook')
+    
     
     # === ДОБАВЛЕННЫЕ ПОЛЯ ДЛЯ РЕЙТИНГА ===
     rating = models.DecimalField(

@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -110,11 +111,11 @@ WSGI_APPLICATION = 'eatme.wsgi.application'
 DATABASES={
     'default':{
         'ENGINE':'django.db.backends.postgresql',
-        'NAME':'eatme',
-        'USER':'postgres',
-        'PASSWORD':'Sql12345',
-        'HOST':'localhost',
-        'PORT':5432,
+        'NAME':config('DATABASES_NAME'),
+        'USER':config('DATABASES_USER'),
+        'PASSWORD':config('DATABASES_PASSWORD'),
+        'HOST':config('DATABASES_HOST'),
+        'PORT':config('DATABASES_PORT',cast=int),
     }
 }
 
@@ -241,9 +242,13 @@ EMAIL_HOST = 'smtp.yandex.ru'
 EMAIL_PORT = 465
 EMAIL_USE_SSL = True
 
-EMAIL_HOST_USER = 'damir.gilmanov2015@yandex.kz'
-EMAIL_HOST_PASSWORD = 'vtahhvrmhpzeoodd'
+EMAIL_HOST_USER = config('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
 
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 SERVER_EMAIL = EMAIL_HOST_USER
 EMAIL_ADMIN = EMAIL_HOST_USER
+
+
+GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = config('GOOGLE_CLIENT_SECRET')

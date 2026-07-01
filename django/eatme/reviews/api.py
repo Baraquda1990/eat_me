@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.db.models import Avg
 from rest_framework import status
-from rest_framework.generics import CreateAPIView, ListAPIView
+from rest_framework.generics import CreateAPIView, ListAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError, PermissionDenied
@@ -157,3 +157,26 @@ class SellerReviewsApi(ListAPIView):
             'company',
             'card',
         )
+
+
+class MyReviewDetailApi(RetrieveUpdateDestroyAPIView):
+    serializer_class = ReviewSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Review.objects.filter(
+            user=self.request.user
+        ).select_related(
+            'user',
+            'company',
+            'card',
+        )
+
+    def perform_update(self, serializer):
+        review = serializer.save()
+        recalculate_company_rating(review.company)
+
+    def perform_destroy(self, instance):
+        company = instance.company
+        instance.delete()
+        recalculate_company_rating(company)

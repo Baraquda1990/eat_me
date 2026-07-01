@@ -29,14 +29,13 @@ DEBUG = True
 
 if DEBUG:
 
-    ALLOWED_HOSTS = ["localhost", "127.0.0.1",'85.29.147.68']
-
-    ALLOWED_HOSTS = ["localhost", "127.0.0.1", "85.29.147.68"]
+    ALLOWED_HOSTS = ["localhost", "127.0.0.1",'85.29.147.68','eatme.xn--80abghpum3ai0h.xn--p1ai']
 
 else:
     ALLOWED_HOSTS = [""]
 
-WEBSITE_URL='http://127.0.0.1:8000'
+WEBSITE_URL='http://eatme.xn--80abghpum3ai0h.xn--p1ai'
+#WEBSITE_URL='http://127.0.0.1:8000'
 
 SITE_ID = 1
 
@@ -50,7 +49,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sites',
     'rest_framework',
+    'rest_framework_simplejwt',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
     'drf_spectacular',
     'djoser',
     'company',
@@ -61,6 +66,7 @@ INSTALLED_APPS = [
     'profiles',
     'notifications',
     'reviews',
+    'google_core'
 ]
 
 MIDDLEWARE = [
@@ -72,6 +78,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'allauth.account.middleware.AccountMiddleware',
 ]
 
 SIMPLE_JWT = {
@@ -85,12 +92,17 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
+]
+
 ROOT_URLCONF = 'eatme.urls'
 
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -121,6 +133,7 @@ DATABASES={
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
+        "rest_framework.authentication.SessionAuthentication",
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
@@ -138,6 +151,23 @@ DJOSER = {
     "SEND_ACTIVATION_EMAIL": False,
     "SEND_CONFIRMATION_EMAIL": False,
 }
+
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'SCOPE': ['profile', 'email'],
+        'AUTH_PARAMS': {'access_type': 'online'},
+    }
+}
+
+#SOCIALACCOUNT_ADAPTER = 'google_core.adapters.CustomSocialAccountAdapter'
+
+#ACCOUNT_EMAIL_VERIFICATION = "none"
+#ACCOUNT_LOGIN_METHODS = {"email"}
+#ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
+#ACCOUNT_EMAIL_REQUIRED = True
+
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = True 
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "API для приложения под кодовым названием 'EAT_ME'",
@@ -208,7 +238,7 @@ USE_X_FORWARDED_PORT = True
 
 ADMIN_URL = '/admin2/'
 LOGIN_URL = '/api_eatme/admin2/login/'
-LOGIN_REDIRECT_URL = '/api_eatme/admin2/'
+LOGIN_REDIRECT_URL = '/api/token/'
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = False

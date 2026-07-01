@@ -26,6 +26,8 @@ urlpatterns = [
 
     path('api/auth/', include('djoser.urls')),
     path('api/auth/', include('djoser.urls.jwt')),
+    path('auth/', include('allauth.urls')),
+    path('api/', include('google_core.urls')),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(
         url_name=None,

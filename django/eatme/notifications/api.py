@@ -16,6 +16,7 @@ from .serializers import (
     NotificationAlarmSerializer,
 )
 from .services import send_push_to_user
+from notifications.i18n import tr
 
 
 class NotificationsList(ListAPIView):
@@ -107,11 +108,18 @@ class NotificationAlarmListCreate(ListCreateAPIView):
         if already_exists:
             return
 
+        title = tr(self.request.user, 'alarm_saved_title')
+        body = tr(
+            self.request.user,
+            'alarm_saved_body',
+            date=notify_text,
+        )
+
         Notification.objects.create(
             user=self.request.user,
             type='alarm_match',
-            title='Уведомление сохранено',
-            body=f'Уведомление сохранено на {notify_text}. Мы уведомим вас о новых предложениях.',
+            title=title,
+            body=body,
             data={
                 'alarm_id': alarm.id,
                 'product_type': alarm.product_type,
@@ -122,8 +130,8 @@ class NotificationAlarmListCreate(ListCreateAPIView):
 
         send_push_to_user(
             user=self.request.user,
-            title='Уведомление сохранено',
-            body=f'Уведомление сохранено на {notify_text}. Мы уведомим вас о новых предложениях.',
+            title=title,
+            body=body,
             data={
                 'type': 'alarm_created',
                 'alarm_id': alarm.id,

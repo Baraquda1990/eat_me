@@ -14,6 +14,7 @@ from notifications.tasks import create_review_reminder
 from django.db.models import Sum
 from rest_framework.views import APIView
 from reviews.models import Review
+from notifications.i18n import tr
 
 
 @extend_schema(
@@ -216,15 +217,23 @@ class CheckoutApi(UpdateAPIView):
                 product_names += f' и ещё {len(items) - 3}'
 
             for seller in sellers:
+                phone_text = buyer_phone or tr(seller.user, 'not_specified')
+                
+                title = tr(seller.user, 'new_order_title')
+                body = tr(
+                    seller.user,
+                    'new_order_body',
+                    buyer=request.user.username,
+                    quantity=total_quantity,
+                    products=product_names,
+                    phone=phone_text,
+                )
+
                 Notification.objects.create(
                     user=seller.user,
                     type='order_created',
-                    title='Новый заказ',
-                    body=(
-                        f'{request.user.username} купил товаров: {total_quantity}. '
-                        f'{product_names}. '
-                        f'Тел: {buyer_phone or "не указан"}'
-                    ),
+                    title=title,
+                    body=body,
                     data={
                         'card_id': cart.id,
                         'company_id': company.id,
@@ -241,12 +250,8 @@ class CheckoutApi(UpdateAPIView):
 
                 send_push_to_user(
                     user=seller.user,
-                    title='Новый заказ',
-                    body=(
-                        f'{request.user.username} купил товаров: {total_quantity}. '
-                        f'{product_names}. '
-                        f'Тел: {buyer_phone or "не указан"}'
-                    ),
+                    title=title,
+                    body=body,
                     data={
                         'type': 'order_created',
                         'card_id': str(cart.id),

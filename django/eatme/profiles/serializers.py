@@ -44,5 +44,6 @@ class ProfileSerializer(serializers.ModelSerializer):
             'phone',
             'address',
             'type_user',
+            'language',
         ]
         read_only_fields = ['type_user']

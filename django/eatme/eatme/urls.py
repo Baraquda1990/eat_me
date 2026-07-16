@@ -23,6 +23,7 @@ from drf_spectacular.views import (SpectacularAPIView,SpectacularSwaggerView,Spe
 urlpatterns = [
 
     path('api/admin/', admin.site.urls),
+    path('api/google-for-flutter/', include('google_for_flutter.urls')),
 
     path('api/auth/', include('djoser.urls')),
     path('api/auth/', include('djoser.urls.jwt')),
@@ -42,6 +43,7 @@ urlpatterns = [
     path('api/',include('card.urls')),
     path('api/', include('notifications.urls')),
     path('api/', include('reviews.urls')),
+    path('api/',include('seller_application.urls'),),
     path('api/', include('profiles.urls')) 
 ]+static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

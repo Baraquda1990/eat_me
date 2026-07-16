@@ -15,6 +15,18 @@ class Profile(models.Model):
     phone = models.CharField(max_length=20, blank=True, verbose_name='Телефон')
     phone_verified = models.BooleanField(default=False, verbose_name='Телефон подтверждён')
     address=models.CharField(max_length=250,blank=True,verbose_name='Адрес')
+
+    class Language(models.TextChoices):
+        RU = 'ru', 'Русский'
+        EN = 'en', 'English'
+        HY = 'hy', 'Հայերեն'
+
+    language = models.CharField(
+        max_length=5,
+        choices=Language.choices,
+        default=Language.EN,
+        verbose_name='Язык'
+    )
     
     class TypeUser(models.TextChoices):
         BUYER = 'buyer', 'покупатель'

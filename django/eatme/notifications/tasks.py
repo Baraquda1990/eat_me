@@ -4,6 +4,7 @@ from celery import shared_task
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from notifications.i18n import tr
 
 from products.models import Products
 from notifications.models import Notification, NotificationAlarm
@@ -76,11 +77,14 @@ def create_review_reminder(card):
     if exists:
         return
 
+    title = tr(card.user, 'review_reminder_title')
+    body = tr(card.user, 'review_reminder_body')
+
     Notification.objects.create(
         user=card.user,
         type='review_reminder',
-        title='Оцените заказ',
-        body='Поделитесь впечатлениями о покупке',
+        title=title,
+        body=body,
         data={
             'card_id': card.id,
         },
@@ -88,8 +92,8 @@ def create_review_reminder(card):
 
     send_push_to_user(
         user=card.user,
-        title='Оцените заказ',
-        body='Поделитесь впечатлениями о покупке',
+        title=title,
+        body=body,
         data={
             'type': 'review_reminder',
             'card_id': card.id,
@@ -119,11 +123,19 @@ def check_product_alarm_matches(product_id):
         if not user:
             continue
 
+        title = tr(user, 'favorite_store_title')
+        body = tr(
+            user,
+            'favorite_store_body',
+            company=product.company.name,
+            product=product.name,
+        )
+
         create_notification_once(
             user=user,
             type_='favorite_store',
-            title='Любимый магазин',
-            body=f'{product.company.name} добавил новое предложение: {product.name}',
+            title=title,
+            body=body,
             data={
                 'product_slug': product.slug,
                 'product_name': product.name,
@@ -164,11 +176,18 @@ def check_product_alarm_matches(product_id):
                 continue
 
             # Новое предложение рядом
+            title = tr(alarm.user, 'new_nearby_product_title')
+            body = tr(
+                alarm.user,
+                'new_nearby_product_body',
+                product=product.name,
+            )
+
             create_notification_once(
                 user=alarm.user,
                 type_='new_nearby_product',
-                title='Новое предложение рядом',
-                body=f'Рядом появилось предложение: {product.name}',
+                title=title,
+                body=body,
                 data={
                     'product_slug': product.slug,
                     'product_name': product.name,
@@ -186,11 +205,19 @@ def check_product_alarm_matches(product_id):
         if already_exists:
             continue
 
+        title = tr(alarm.user, 'alarm_match_title')
+        body = tr(
+            alarm.user,
+            'alarm_match_body',
+            company=product.company.name,
+            product=product.name,
+        )
+
         Notification.objects.create(
             user=alarm.user,
             type='alarm_match',
-            title='Найдено предложение',
-            body=f'{product.company.name} добавил товар "{product.name}"',
+            title=title,
+            body=body,
             data={
                 'product_slug': product.slug,
                 'product_name': product.name,
@@ -201,8 +228,8 @@ def check_product_alarm_matches(product_id):
 
         send_push_to_user(
             user=alarm.user,
-            title='Найдено предложение',
-            body=f'{product.company.name} добавил товар "{product.name}"',
+            title=title,
+            body=body,
             data={
                 'type': 'alarm_match',
                 'product_slug': product.slug,
@@ -275,8 +302,12 @@ def create_recommendations_for_users():
         if already_exists:
             continue
 
-        title = 'Рекомендация для вас'
-        body = f'Мы нашли предложение, которое может вам понравиться: {product.name}'
+        title = tr(user, 'recommendation_title')
+        body = tr(
+            user,
+            'recommendation_body',
+            product=product.name,
+        )
 
         Notification.objects.create(
             user=user,

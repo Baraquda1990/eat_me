@@ -8,7 +8,13 @@ from core.utils import unique_slugify
 
 class Company(models.Model):
     name = models.CharField(max_length=100, verbose_name="Название организации")
-    slug = models.SlugField(verbose_name='URL', max_length=255, blank=True, unique=True, null=True)
+    slug = models.SlugField(
+        verbose_name='URL',
+        max_length=255,
+        blank=True,
+        unique=True,
+        # null=True убран
+    )
     image = models.ImageField(upload_to="uploads/company", blank=True, null=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Широта", blank=True, null=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Долгота", blank=True, null=True)
@@ -58,7 +64,7 @@ class Company(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            unique_slugify(self, self.name)
+            self.slug = unique_slugify(self, self.name)
         super().save(*args, **kwargs)
 
     class Meta:

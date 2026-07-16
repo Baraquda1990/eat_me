@@ -1,11 +1,22 @@
 from uuid import uuid4
 from pytils.translit import slugify
-def unique_slugify(instance,slug):
+
+
+def unique_slugify(instance, value):
     """
-    Генератор уникальных SLUG для моделей, в случае существования такого SLUG
+    Генерирует уникальный slug для модели.
     """
-    model=instance.__class__
-    unique_slug=slugify(slug)
-    while model.objects.filter(slug=unique_slug).exists():
-        unique_slug=f'{unique_slug}-{uuid4().hex[:8]}'
+    model = instance.__class__
+
+    base_slug = slugify(value)
+    unique_slug = base_slug
+
+    queryset = model.objects.all()
+
+    if instance.pk:
+        queryset = queryset.exclude(pk=instance.pk)
+
+    while queryset.filter(slug=unique_slug).exists():
+        unique_slug = f'{base_slug}-{uuid4().hex[:8]}'
+
     return unique_slug

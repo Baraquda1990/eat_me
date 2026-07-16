@@ -66,7 +66,9 @@ INSTALLED_APPS = [
     'profiles',
     'notifications',
     'reviews',
-    'google_core'
+    'google_core',
+    'google_for_flutter',
+    'seller_application'
 ]
 
 MIDDLEWARE = [
@@ -147,7 +149,7 @@ DJOSER = {
         'user_create': 'profiles.serializers.CustomUserCreateSerializer',
         'user_create_password_retype': 'profiles.serializers.CustomUserCreateSerializer',
     },
-    "PASSWORD_RESET_CONFIRM_URL": "api_eatme/password/reset/confirm/{uid}/{token}",
+    "PASSWORD_RESET_CONFIRM_URL": "password-reset/{uid}/{token}",
     "SEND_ACTIVATION_EMAIL": False,
     "SEND_CONFIRMATION_EMAIL": False,
 }

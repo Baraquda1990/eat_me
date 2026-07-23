@@ -5,6 +5,12 @@ from .models import Company
 
 
 class CompanySerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(
+        required=False,
+        allow_null=True,
+        write_only=True,
+    )
+
     avg_quality = serializers.SerializerMethodField()
     avg_value = serializers.SerializerMethodField()
     avg_description_match = serializers.SerializerMethodField()
@@ -20,7 +26,10 @@ class CompanySerializer(serializers.ModelSerializer):
             'longitude',
             'address',
             'phone',
+
+            'image',
             'image_url',
+
             'description',
             'open_time',
             'close_time',
@@ -38,6 +47,9 @@ class CompanySerializer(serializers.ModelSerializer):
         ]
 
         read_only_fields = [
+            'id',
+            'slug',
+            'image_url',
             'rating',
             'reviews_count',
             'successful_orders',
@@ -63,7 +75,6 @@ class CompanySerializer(serializers.ModelSerializer):
 
     def get_avg_service(self, obj):
         return self._avg(obj, 'service')
-
 
 class CompanyCreateSerializer(serializers.ModelSerializer):
     class Meta:

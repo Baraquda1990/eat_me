@@ -1,16 +1,22 @@
-from rest_framework.generics import RetrieveAPIView, ListAPIView, CreateAPIView, RetrieveUpdateAPIView
-from rest_framework.permissions import AllowAny
-from .models import Company
-from .serializers import CompanySerializer, CompanyCreateSerializer
-from drf_spectacular.utils import extend_schema
-from math import radians
+from rest_framework.generics import (
+    RetrieveAPIView,
+    ListAPIView,
+    CreateAPIView,
+    RetrieveUpdateAPIView,
+)
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.exceptions import PermissionDenied
 from django.db.models import (
     F, Value, FloatField, ExpressionWrapper
 )
 from django.db.models.functions import ACos, Cos, Sin, Radians
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied
+from drf_spectacular.utils import extend_schema
+
+from .models import Company
+from .serializers import CompanySerializer, CompanyCreateSerializer
 from profiles.models import OrgProf
+
 
 @extend_schema(
     description="Детальная информация о компании."
@@ -20,6 +26,7 @@ class CompanyDetail(RetrieveAPIView):
     permission_classes = [AllowAny]
     serializer_class = CompanySerializer
     lookup_field = 'slug'
+
 
 @extend_schema(
     description="Список компаний. GET /company/?latitude=50.283&longitude=57.167 - сортировка по расстоянию"
@@ -31,7 +38,7 @@ class CompanyList(ListAPIView):
     def get_queryset(self):
         qs = Company.objects.all()
         
-        # 👇 ДОБАВЛЕНА ФИЛЬТРАЦИЯ ПО ТИПУ ПРОДУКТА
+        # Фильтрация по типу продукта
         product_type = self.request.query_params.get('type')
         
         if product_type in ['hot', 'long']:
@@ -57,12 +64,14 @@ class CompanyList(ListAPIView):
             distance=ExpressionWrapper(distance, output_field=FloatField())
         ).order_by('distance')
 
+
 @extend_schema(
     description="Создание компании"
 )
 class CompanyCreate(CreateAPIView):
     serializer_class = CompanyCreateSerializer
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
     
     def perform_create(self, serializer):
         if not hasattr(self.request.user, 'profile'):
@@ -76,6 +85,7 @@ class CompanyCreate(CreateAPIView):
             user=self.request.user,
             company=company
         )
+
 
 @extend_schema(
     description="Список созданных компаний продавцом"
@@ -95,6 +105,7 @@ class MyCompanyList(ListAPIView):
 
         return Company.objects.filter(orgprof__user=user)
 
+
 @extend_schema(
     description="Детальная информация о компании и изменение компании"
 )
@@ -102,6 +113,7 @@ class MyCompanyDetailUpdate(RetrieveUpdateAPIView):
     serializer_class = CompanySerializer
     permission_classes = [IsAuthenticated]
     lookup_field = 'slug'
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
         user = self.request.user

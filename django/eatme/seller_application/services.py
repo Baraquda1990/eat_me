@@ -7,42 +7,69 @@ from profiles.models import OrgProf, Profile
 from .models import SellerApplication
 
 
+def _company_data_from_application(application):
+    """Возвращает поля Company, которые заполняются из заявки."""
+    return {
+        'name': application.organization_name,
+        'address': application.address,
+        'phone': application.business_phone,
+        'latitude': application.latitude,
+        'longitude': application.longitude,
+        'description': application.public_description,
+    }
+
+
 @transaction.atomic
 def approve_application(application, admin_user):
-    """Одобряет заявку продавца и создаёт компанию."""
+    """
+    Одобряет заявку продавца.
+
+    При первом одобрении создаёт Company и OrgProf.
+    При повторном одобрении обновляет уже связанную Company,
+    не создавая новую компанию и новую дублирующую связь OrgProf.
+    """
 
     if application.status != SellerApplication.Status.PENDING:
         raise ValueError(
             'Можно одобрять только заявки со статусом PENDING.'
         )
 
-    company = Company.objects.create(
-        name=application.organization_name,
-        address=application.address,
-        phone=application.business_phone,
-        latitude=application.latitude,
-        longitude=application.longitude,
-        description=application.public_description,
-        image=application.logo if application.logo else None,
-    )
+    company_data = _company_data_from_application(application)
 
-    OrgProf.objects.create(
+    if application.company_id:
+        company = application.company
+
+        for field, value in company_data.items():
+            setattr(company, field, value)
+
+        # Если в заявке загружен новый логотип, заменяем логотип компании.
+        # Если файл не передан, существующий логотип сохраняется.
+        if application.logo:
+            company.image = application.logo
+
+        company.save()
+    else:
+        company = Company.objects.create(
+            **company_data,
+            image=application.logo if application.logo else None,
+        )
+
+        application.company = company
+
+    # Не создаём повторную идентичную привязку при повторном одобрении.
+    OrgProf.objects.get_or_create(
         user=application.user,
         company=company,
     )
 
     profile = application.user.profile
-    profile.type_user = Profile.TypeUser.SELLER
-    profile.save(
-        update_fields=[
-            'type_user',
-        ]
-    )
+    if profile.type_user != Profile.TypeUser.SELLER:
+        profile.type_user = Profile.TypeUser.SELLER
+        profile.save(update_fields=['type_user'])
 
     application.status = SellerApplication.Status.APPROVED
     application.reviewed_at = timezone.now()
     application.reviewed_by = admin_user
-    application.company = company
 
     application.save(
         update_fields=[
@@ -94,11 +121,24 @@ def request_changes_application(
     admin_user,
     comment,
 ):
-    """Возвращает отправленную заявку пользователю на исправление."""
+    """
+    Возвращает заявку пользователю на исправление.
 
-    if application.status != SellerApplication.Status.PENDING:
+    Разрешено возвращать как заявку на проверке, так и ранее
+    одобренную заявку. Связанная Company при этом не удаляется
+    и не отвязывается, чтобы после повторного одобрения она была
+    обновлена, а не создана заново.
+    """
+
+    allowed_statuses = {
+        SellerApplication.Status.PENDING,
+        SellerApplication.Status.APPROVED,
+    }
+
+    if application.status not in allowed_statuses:
         raise ValueError(
-            'Запрашивать исправления можно только для заявки PENDING.'
+            'Запрашивать исправления можно только для заявки '
+            'PENDING или APPROVED.'
         )
 
     comment = (comment or '').strip()

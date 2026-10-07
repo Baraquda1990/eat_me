@@ -2,6 +2,9 @@
 
 Мобильное приложение для продажи и заказа еды.
 
+https://github.com/user-attachments/assets/8f0e7b14-e346-432b-a37b-4a63c8b4df68
+
+---
 ## Технологический стек
 
 ### Frontend

@@ -1,0 +1,114 @@
+{
+  "project_info": {
+    "project_number": "701891817101",
+    "project_id": "apsosa",
+    "storage_bucket": "apsosa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:701891817101:android:19b680566a270efd033cc4",
+        "android_client_info": {
+          "package_name": "am.appsosa.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "701891817101-7ran6nuj0eunod56o3upfod6i1v8isa0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "am.appsosa.app",
+            "certificate_hash": "2978d2d7a732075278953f39f24438379c091463"
+          }
+        },
+        {
+          "client_id": "701891817101-emn38jgskdl2s4gva5guiffr2nc33pul.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "am.appsosa.app",
+            "certificate_hash": "096e32184b1de9ceae9c399356e1ed8a0f946b49"
+          }
+        },
+        {
+          "client_id": "701891817101-7l1bdih2eveqi7cv2ico4cb751nr1qru.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNm4le74UpEmtGmbTb7fC2zvDwBuaID-w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "701891817101-7l1bdih2eveqi7cv2ico4cb751nr1qru.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "701891817101-nmj9k4go1tg9s34109v81umcbees6h0n.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.armenia"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:701891817101:android:67a29cb941da39be033cc4",
+        "android_client_info": {
+          "package_name": "am.apsosa.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "701891817101-cfa4cq4djank8p4rg2ali8aodhn46si2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "am.apsosa.app",
+            "certificate_hash": "c5ffdb948e2d2cdab28eaf0c9d09f892f3b61699"
+          }
+        },
+        {
+          "client_id": "701891817101-jk8ksl0k4jpe814frag17obbas0fm59p.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "am.apsosa.app",
+            "certificate_hash": "2e8d576ed2f50b2364824f433d254579f8f61531"
+          }
+        },
+        {
+          "client_id": "701891817101-7l1bdih2eveqi7cv2ico4cb751nr1qru.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNm4le74UpEmtGmbTb7fC2zvDwBuaID-w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "701891817101-7l1bdih2eveqi7cv2ico4cb751nr1qru.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "701891817101-nmj9k4go1tg9s34109v81umcbees6h0n.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.armenia"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

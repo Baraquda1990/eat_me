@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.conf import settings
 from django.contrib.auth import get_user_model
 
@@ -59,13 +59,42 @@ class Company(models.Model):
 
     def image_url(self):
         if self.image:
-            return f'{settings.WEBSITE_URL}{self.image.url}'
+            return self.image.url
         return ''
 
     def save(self, *args, **kwargs):
+        # Remember the file currently stored for this company before updating
+        # the DB row. If a new logo replaces it, the old physical file should
+        # not remain orphaned in MEDIA/storage.
+        old_image_name = None
+
+        if self.pk:
+            previous = (
+                type(self)
+                .objects
+                .filter(pk=self.pk)
+                .only('image')
+                .first()
+            )
+            if previous is not None and previous.image:
+                old_image_name = previous.image.name
+
         if not self.slug:
             self.slug = unique_slugify(self, self.name)
+
         super().save(*args, **kwargs)
+
+        new_image_name = self.image.name if self.image else None
+
+        if old_image_name and old_image_name != new_image_name:
+            storage = self._meta.get_field('image').storage
+
+            # Delete only after the DB transaction has successfully committed.
+            # In normal autocommit mode this runs immediately after save().
+            transaction.on_commit(
+                lambda name=old_image_name, file_storage=storage:
+                    file_storage.delete(name),
+            )
 
     class Meta:
         ordering = ('name',)

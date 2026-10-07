@@ -8,7 +8,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import PermissionDenied
 from django.db.models import (
-    F, Value, FloatField, ExpressionWrapper
+    F, Value, FloatField, ExpressionWrapper, Count, Q
 )
 from django.db.models.functions import ACos, Cos, Sin, Radians
 from drf_spectacular.utils import extend_schema
@@ -18,11 +18,26 @@ from .serializers import CompanySerializer, CompanyCreateSerializer
 from profiles.models import OrgProf
 
 
+def company_queryset():
+    """Company queryset with HOT-product presence precomputed.
+
+    A mixed HOT + Deals company has hot_products_count > 0 and therefore keeps
+    its rating block. A Deals-only company receives has_hot_products=false.
+    """
+    return Company.objects.annotate(
+        hot_products_count=Count(
+            'products',
+            filter=Q(products__type='hot'),
+            distinct=True,
+        ),
+    )
+
+
 @extend_schema(
     description="Детальная информация о компании."
 )
 class CompanyDetail(RetrieveAPIView):
-    queryset = Company.objects.all()
+    queryset = company_queryset()
     permission_classes = [AllowAny]
     serializer_class = CompanySerializer
     lookup_field = 'slug'
@@ -36,7 +51,7 @@ class CompanyList(ListAPIView):
     permission_classes = [AllowAny]
 
     def get_queryset(self):
-        qs = Company.objects.all()
+        qs = company_queryset()
         
         # Фильтрация по типу продукта
         product_type = self.request.query_params.get('type')
@@ -103,7 +118,7 @@ class MyCompanyList(ListAPIView):
         if user.profile.type_user != 'seller':
             raise PermissionDenied('Только продавцы имеют доступ')
 
-        return Company.objects.filter(orgprof__user=user)
+        return company_queryset().filter(orgprof__user=user)
 
 
 @extend_schema(

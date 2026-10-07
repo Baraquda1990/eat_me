@@ -2,8 +2,10 @@ from django.db import models
 from django.conf import settings
 from company.models import Company
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.utils import timezone
 from tag.models import Tag
 from core.utils import unique_slugify
+from core.image_processing import product_variant_name
 
 
 class Products(models.Model):
@@ -46,6 +48,32 @@ class Products(models.Model):
         verbose_name="Дата создания"
     )
 
+    class PublicationStatus(models.TextChoices):
+        DRAFT = 'draft', 'Черновик'
+        SCHEDULED = 'scheduled', 'Запланирован'
+        PUBLISHED = 'published', 'Опубликован'
+
+    publication_status = models.CharField(
+        max_length=20,
+        choices=PublicationStatus.choices,
+        default=PublicationStatus.PUBLISHED,
+        db_index=True,
+        verbose_name='Статус публикации'
+    )
+
+    publish_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name='Опубликовать в'
+    )
+
+    published_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Фактически опубликован'
+    )
+
     discount = models.PositiveSmallIntegerField(
         default=0,
         verbose_name='Процент скидки',
@@ -54,7 +82,59 @@ class Products(models.Model):
 
     count = models.PositiveIntegerField(
         default=1,
-        verbose_name='Количество товара'
+        verbose_name='Количество товара / доступных мест'
+    )
+
+    dine_in_only = models.BooleanField(
+        default=False,
+        verbose_name='Только в заведении'
+    )
+
+    views_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Количество просмотров'
+    )
+
+    shares_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Количество поделившихся'
+    )
+
+    class InactiveReason(models.TextChoices):
+        MANUAL = 'manual', 'Остановлен продавцом'
+        SCHEDULED = 'scheduled', 'Ожидает публикации'
+        PICKUP_EXPIRED = 'pickup_expired', 'Время получения истекло'
+        EXPIRATION_EXPIRED = 'expiration_expired', 'Срок годности истёк'
+
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name='Активен в продаже'
+    )
+
+    inactive_reason = models.CharField(
+        max_length=30,
+        choices=InactiveReason.choices,
+        blank=True,
+        default='',
+        verbose_name='Причина неактивности'
+    )
+
+    active_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Активен до'
+    )
+
+    pickup_from = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Получение с'
+    )
+
+    pickup_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Получение до'
     )
 
     package_quantity = models.CharField(
@@ -87,6 +167,42 @@ class Products(models.Model):
         null=True,
         blank=True,
         verbose_name='Доставка в течение дней'
+    )
+
+    delivery_radius_km = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[
+            MinValueValidator(1),
+            MaxValueValidator(100),
+        ],
+        verbose_name='Радиус доставки, км'
+    )
+
+    # Product-specific map point. For HOT this is the pickup point;
+    # for Deals this is the center of the delivery radius. Keeping it on the
+    # product allows the seller to choose a point independently of the company.
+    location_address = models.CharField(
+        max_length=500,
+        blank=True,
+        default='',
+        verbose_name='Адрес точки товара'
+    )
+
+    location_latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        verbose_name='Широта точки товара'
+    )
+
+    location_longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        verbose_name='Долгота точки товара'
     )
 
     expiration_date = models.DateField(
@@ -124,6 +240,33 @@ class Products(models.Model):
         verbose_name='Продвижение до'
     )
 
+
+    def is_available_for_sale(self):
+        now = timezone.now()
+
+        if self.publication_status != self.PublicationStatus.PUBLISHED:
+            return False
+
+        if self.publish_at is not None and self.publish_at > now:
+            return False
+
+        if not self.is_active or self.count <= 0:
+            return False
+
+        if self.type == self.Type.HOT:
+            deadline = self.pickup_until or self.active_until
+            if deadline is None or deadline <= now:
+                return False
+
+        if (
+            self.type == self.Type.LONG
+            and self.expiration_date is not None
+            and self.expiration_date < timezone.localdate()
+        ):
+            return False
+
+        return True
+
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = unique_slugify(self, self.name.lower())
@@ -131,8 +274,38 @@ class Products(models.Model):
 
     def image_url(self):
         if self.image:
-            return f'{settings.WEBSITE_URL}{self.image.url}'
+            return self.image.url
         return ''
+
+    def image_card_url(self):
+        if not self.image:
+           return ''
+
+        name = product_variant_name(
+            self.image.name,
+            '640',
+        )
+
+        if not name:
+            return self.image.url
+
+        return self.image.storage.url(name)
+
+
+    def image_thumb_url(self):
+        if not self.image:
+            return ''
+
+        name = product_variant_name(
+            self.image.name,
+            '320',
+        )
+
+        if not name:
+            return self.image.url
+
+        return self.image.storage.url(name)
+    
 
     @property
     def get_discount_price(self):

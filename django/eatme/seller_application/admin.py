@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib import messages
 from django.utils.html import format_html
+from django.http import HttpResponseRedirect
 
 from .services import (
     approve_application,
@@ -11,6 +12,7 @@ from .services import (
 from .models import (
     BusinessCategory,
     CompanyChannel,
+    SellerAgencyAgreementAcceptance,
     SellerApplication,
     SellerApplicationDocument,
 )
@@ -34,6 +36,26 @@ class SellerApplicationDocumentInline(admin.TabularInline):
         'uploaded_by',
         'created',
     )
+
+
+class SellerAgencyAgreementAcceptanceInline(admin.StackedInline):
+    model = SellerAgencyAgreementAcceptance
+    extra = 0
+    can_delete = False
+
+    fields = (
+        'version',
+        'language',
+        'accepted_at',
+        'snapshot',
+        'template_sha256',
+        'document_sha256',
+        'ip_address',
+        'user_agent',
+        'created',
+        'updated',
+    )
+    readonly_fields = fields
 
 
 @admin.register(CompanyChannel)
@@ -182,6 +204,8 @@ def request_changes_selected(modeladmin, request, queryset):
 
 @admin.register(SellerApplication)
 class SellerApplicationAdmin(admin.ModelAdmin):
+    change_form_template = 'admin/seller_application/sellerapplication/change_form.html'
+
     actions = (
         approve_selected,
         reject_selected,
@@ -228,6 +252,7 @@ class SellerApplicationAdmin(admin.ModelAdmin):
     )
 
     readonly_fields = (
+        'status',
         'created',
         'updated',
         'submitted_at',
@@ -310,6 +335,7 @@ class SellerApplicationAdmin(admin.ModelAdmin):
 
     inlines = [
         SellerApplicationDocumentInline,
+        SellerAgencyAgreementAcceptanceInline,
     ]
 
     @admin.display(description='Направления')
@@ -342,6 +368,90 @@ class SellerApplicationAdmin(admin.ModelAdmin):
             obj.get_status_display(),
         )
 
+    def response_change(self, request, obj):
+        # ==========================
+        # ОДОБРИТЬ
+        # ==========================
+        if '_approve_application' in request.POST:
+            try:
+                company = approve_application(
+                    obj,
+                    request.user,
+                )
+
+                self.message_user(
+                    request,
+                    (
+                        f'Заявка #{obj.id} одобрена. '
+                        f'Компания "{company.name}" создана/обновлена, '
+                        f'пользователь привязан к компании.'
+                    ),
+                    level=messages.SUCCESS,
+                )
+
+            except Exception as exc:
+                self.message_user(
+                    request,
+                    f'Ошибка при одобрении заявки: {exc}',
+                    level=messages.ERROR,
+                )
+
+            return HttpResponseRedirect(request.path)
+
+        # ==========================
+        # ВЕРНУТЬ НА ИСПРАВЛЕНИЕ
+        # ==========================
+        if '_request_changes' in request.POST:
+            try:
+                request_changes_application(
+                    obj,
+                    request.user,
+                    obj.admin_comment,
+                )
+
+                self.message_user(
+                    request,
+                    f'Заявка #{obj.id} возвращена пользователю на исправление.',
+                    level=messages.SUCCESS,
+                )
+
+            except Exception as exc:
+                self.message_user(
+                    request,
+                    f'Ошибка: {exc}',
+                    level=messages.ERROR,
+                )
+
+            return HttpResponseRedirect(request.path)
+
+        # ==========================
+        # ОТКЛОНИТЬ
+        # ==========================
+        if '_reject_application' in request.POST:
+            try:
+                reject_application(
+                    obj,
+                    request.user,
+                    obj.admin_comment,
+                )
+
+                self.message_user(
+                    request,
+                    f'Заявка #{obj.id} отклонена.',
+                    level=messages.SUCCESS,
+                )
+
+            except Exception as exc:
+                self.message_user(
+                    request,
+                    f'Ошибка при отклонении заявки: {exc}',
+                    level=messages.ERROR,
+                )
+
+            return HttpResponseRedirect(request.path)
+
+        return super().response_change(request, obj)
+
 
 @admin.register(SellerApplicationDocument)
 class SellerApplicationDocumentAdmin(admin.ModelAdmin):
@@ -369,4 +479,33 @@ class SellerApplicationDocumentAdmin(admin.ModelAdmin):
     readonly_fields = (
         'original_name',
         'created',
+    )
+
+@admin.register(SellerAgencyAgreementAcceptance)
+class SellerAgencyAgreementAcceptanceAdmin(admin.ModelAdmin):
+    list_display = (
+        'application',
+        'version',
+        'language',
+        'accepted_at',
+        'ip_address',
+    )
+    list_filter = ('version', 'language', 'accepted_at')
+    search_fields = (
+        'application__organization_name',
+        'application__user__username',
+        'document_sha256',
+    )
+    readonly_fields = (
+        'application',
+        'version',
+        'language',
+        'template_sha256',
+        'document_sha256',
+        'snapshot',
+        'accepted_at',
+        'ip_address',
+        'user_agent',
+        'created',
+        'updated',
     )

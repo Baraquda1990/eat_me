@@ -37,6 +37,7 @@ class DeviceToken(models.Model):
 
 class Notification(models.Model):
     class Type(models.TextChoices):
+        WELCOME = 'welcome', 'Добро пожаловать в Appsosa'
         ADMIN_NEWS = 'admin_news', 'Новость от администрации'
         NEW_PRODUCT = 'new_product', 'Новый товар'
         ORDER_CREATED = 'order_created', 'Новый заказ'
@@ -121,7 +122,17 @@ class NotificationAlarm(models.Model):
 
     
     notify_at = models.DateTimeField(
-        verbose_name='Когда уведомить'
+        verbose_name='Активен с'
+    )
+    notify_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name='Активен до'
+    )
+    timezone_offset_minutes = models.SmallIntegerField(
+        default=0,
+        verbose_name='Смещение часового пояса, минут'
     )
     radius_km = models.DecimalField(
         max_digits=5,
@@ -157,3 +168,103 @@ class NotificationAlarm(models.Model):
 
     def __str__(self):
         return f'{self.user} - {self.product_type} - {self.notify_at}'
+
+
+
+class NotificationBroadcast(models.Model):
+    """Admin-created notification campaign.
+
+    A broadcast is an audit record only. The actual messages shown in the
+    Flutter client are still ordinary per-user ``Notification`` rows.
+    """
+
+    class Audience(models.TextChoices):
+        ALL = 'all', 'Все пользователи'
+        BUYERS = 'buyers', 'Покупатели'
+        SELLERS = 'sellers', 'Продавцы'
+        SPECIFIC = 'specific', 'Конкретный пользователь'
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'В очереди'
+        SENDING = 'sending', 'Отправляется'
+        COMPLETED = 'completed', 'Отправлено'
+        FAILED = 'failed', 'Ошибка'
+
+    audience = models.CharField(
+        max_length=20,
+        choices=Audience.choices,
+        default=Audience.SPECIFIC,
+        verbose_name='Получатели',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name='targeted_notification_broadcasts',
+        null=True,
+        blank=True,
+        verbose_name='Конкретный пользователь',
+        help_text='Используется только если выбран получатель «Конкретный пользователь».',
+    )
+    type = models.CharField(
+        max_length=30,
+        choices=Notification.Type.choices,
+        default=Notification.Type.ADMIN_NEWS,
+        verbose_name='Тип',
+    )
+    title = models.CharField(
+        max_length=255,
+        verbose_name='Заголовок',
+    )
+    body = models.TextField(
+        verbose_name='Текст',
+    )
+    data = models.JSONField(
+        blank=True,
+        null=True,
+        verbose_name='Доп. данные',
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+        verbose_name='Статус',
+    )
+    recipients_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Получателей',
+    )
+    notifications_created = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Создано уведомлений',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name='created_notification_broadcasts',
+        null=True,
+        blank=True,
+        verbose_name='Создал',
+    )
+    error_message = models.TextField(
+        blank=True,
+        default='',
+        verbose_name='Ошибка',
+    )
+    created = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='Создано',
+    )
+    sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Завершено',
+    )
+
+    class Meta:
+        ordering = ['-created']
+        verbose_name = 'Рассылка уведомления'
+        verbose_name_plural = 'Рассылки уведомлений'
+
+    def __str__(self):
+        return f'{self.get_audience_display()}: {self.title}'

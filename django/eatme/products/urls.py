@@ -1,5 +1,16 @@
 from django.urls import path
-from .api import ProductsList,ProductsDetail,MyProductsList,ProductsCreate,MyProductUpdate,MyProductDelete,RecommendedProductsList
+from .api import (
+    ProductsList,
+    ProductsDetail,
+    MyProductsList,
+    ProductsCreate,
+    MyProductUpdate,
+    MyProductDelete,
+    RecommendedProductsList,
+    ProductViewEvent,
+    ProductShareEvent,
+    MyProductStatus,
+)
 '''
 Эндпоинт предоставления списка Каталога
 '''
@@ -8,7 +19,10 @@ urlpatterns = [
     path('products/recommended/', RecommendedProductsList.as_view()),
     path('products/my/', MyProductsList.as_view()),
     path('products/create/', ProductsCreate.as_view()),
+    path('products/<slug:slug>/view/', ProductViewEvent.as_view()),
+    path('products/<slug:slug>/share/', ProductShareEvent.as_view()),
     path('products/<slug:slug>/', ProductsDetail.as_view()),
     path('products/<slug:slug>/update/', MyProductUpdate.as_view()),
+    path('products/<slug:slug>/status/', MyProductStatus.as_view()),
     path('products/<slug:slug>/delete/', MyProductDelete.as_view()),
 ]

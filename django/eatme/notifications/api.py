@@ -1,3 +1,6 @@
+from datetime import timedelta
+
+from django.db.models import Q
 from django.utils import timezone
 
 from rest_framework.generics import (
@@ -88,6 +91,18 @@ class NotificationAlarmListCreate(ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        now = timezone.now()
+
+        # Expired alarms must not remain active forever. For old rows without
+        # notify_until, notify_at is treated as their deadline.
+        NotificationAlarm.objects.filter(
+            user=self.request.user,
+            is_active=True,
+        ).filter(
+            Q(notify_until__lte=now)
+            | Q(notify_until__isnull=True, notify_at__lte=now)
+        ).update(is_active=False)
+
         return NotificationAlarm.objects.filter(
             user=self.request.user
         )
@@ -95,9 +110,25 @@ class NotificationAlarmListCreate(ListCreateAPIView):
     def perform_create(self, serializer):
         alarm = serializer.save()
 
-        notify_local = timezone.localtime(alarm.notify_at)
+        # Schedule exact automatic deactivation at the end of the selected
+        # alarm window. The UI replaces an edited alarm by delete + create,
+        # so stale ETA tasks are harmless and additionally protected by the
+        # expected deadline argument inside the task.
+        deadline = alarm.notify_until or alarm.notify_at
+        from .tasks import expire_notification_alarm
+        expire_notification_alarm.apply_async(
+            args=[alarm.id, deadline.isoformat()],
+            eta=deadline,
+        )
+
+        # notify_at хранится в UTC, а offset приходит с телефона пользователя.
+        # Так текст уведомления показывает именно выбранное пользователем
+        # локальное время независимо от страны.
+        notify_local = alarm.notify_at + timedelta(
+            minutes=alarm.timezone_offset_minutes
+        )
         notify_at_iso = alarm.notify_at.isoformat()
-        notify_text = notify_local.strftime('%d.%m.%Y в %H:%M')
+        notify_text = notify_local.strftime('%d.%m.%Y %H:%M')
 
         already_exists = Notification.objects.filter(
             user=self.request.user,
@@ -124,6 +155,7 @@ class NotificationAlarmListCreate(ListCreateAPIView):
                 'alarm_id': alarm.id,
                 'product_type': alarm.product_type,
                 'notify_at': notify_at_iso,
+                'timezone_offset_minutes': alarm.timezone_offset_minutes,
                 'notify_text': notify_text,
             },
         )
@@ -137,6 +169,7 @@ class NotificationAlarmListCreate(ListCreateAPIView):
                 'alarm_id': alarm.id,
                 'product_type': alarm.product_type,
                 'notify_at': notify_at_iso,
+                'timezone_offset_minutes': alarm.timezone_offset_minutes,
                 'notify_text': notify_text,
             },
         )

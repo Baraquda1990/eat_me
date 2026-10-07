@@ -1,8 +1,11 @@
+from datetime import timedelta
+from django.utils import timezone
 from rest_framework import serializers
 
 from tag.models import Tag
 from tag.serializers import TagSerializer
 from .models import DeviceToken, Notification, NotificationAlarm
+from .i18n import localize_notification
 from company.models import Company  # 👈 ДОБАВЛЕН ИМПОРТ
 from company.serializers import CompanySerializer  # 👈 ДОБАВЛЕН ИМПОРТ
 
@@ -14,6 +17,9 @@ class DeviceTokenSerializer(serializers.ModelSerializer):
 
 
 class NotificationSerializer(serializers.ModelSerializer):
+    title = serializers.SerializerMethodField()
+    body = serializers.SerializerMethodField()
+
     class Meta:
         model = Notification
         fields = [
@@ -25,6 +31,23 @@ class NotificationSerializer(serializers.ModelSerializer):
             'is_read',
             'created',
         ]
+
+    def _localized_text(self, obj):
+        request = self.context.get('request')
+        user = request.user if request is not None and request.user.is_authenticated else obj.user
+        return localize_notification(
+            user=user,
+            type_=obj.type,
+            data=obj.data or {},
+            fallback_title=obj.title,
+            fallback_body=obj.body,
+        )
+
+    def get_title(self, obj):
+        return self._localized_text(obj)[0]
+
+    def get_body(self, obj):
+        return self._localized_text(obj)[1]
 
 
 class NotificationAlarmSerializer(serializers.ModelSerializer):
@@ -63,6 +86,8 @@ class NotificationAlarmSerializer(serializers.ModelSerializer):
             'tags',
             'tags_detail',
             'notify_at',
+            'notify_until',
+            'timezone_offset_minutes',
             'radius_km',
             'latitude',
             'longitude',
@@ -73,6 +98,37 @@ class NotificationAlarmSerializer(serializers.ModelSerializer):
         ]
 
         read_only_fields = ['id', 'created']
+
+
+    def validate_notify_at(self, value):
+        minimum_allowed = timezone.now() + timedelta(minutes=5)
+
+        if value <= minimum_allowed:
+            raise serializers.ValidationError(
+                'Выберите время минимум на 5 минут позже текущего.'
+            )
+
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        notify_at = attrs.get(
+            'notify_at',
+            getattr(self.instance, 'notify_at', None),
+        )
+        notify_until = attrs.get(
+            'notify_until',
+            getattr(self.instance, 'notify_until', None),
+        )
+
+        if notify_at is not None and notify_until is not None:
+            if notify_until <= notify_at:
+                raise serializers.ValidationError({
+                    'notify_until': 'Время окончания должно быть позже времени начала.'
+                })
+
+        return attrs
 
     def create(self, validated_data):
         tags = validated_data.pop('tags', [])

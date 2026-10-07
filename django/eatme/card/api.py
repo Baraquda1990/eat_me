@@ -1,6 +1,9 @@
 from rest_framework.generics import CreateAPIView, UpdateAPIView, RetrieveAPIView, DestroyAPIView, ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from .models import Card, Card_item
+from .stock_out_notifications import notify_product_out_of_stock
+from .snapshots import capture_card_snapshot
+from .review_eligibility import hot_product_review_available_at
 from .serializers import CardSerializer, AddToCartSerializer, UpdateQuantitySerializer
 from rest_framework.response import Response
 from rest_framework import status
@@ -8,13 +11,19 @@ from products.models import Products
 from rest_framework.exceptions import ValidationError
 from drf_spectacular.utils import extend_schema
 from profiles.models import OrgProf
+from legal.services import (
+    missing_required_documents,
+    preferred_language_for_request,
+    serialize_documents,
+)
 from notifications.models import Notification
 from notifications.services import send_push_to_user
 from notifications.tasks import create_review_reminder
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from rest_framework.views import APIView
 from reviews.models import Review
-from notifications.i18n import tr
+from django.utils import timezone
+from core.phone import is_valid_armenian_phone
 
 
 @extend_schema(
@@ -44,6 +53,16 @@ class AddToCartApi(CreateAPIView):
             return Response(
                 {"error": "Продукт не найден"},
                 status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not product.is_available_for_sale():
+            return Response(
+                {
+                    "error": f"Товар сейчас недоступен для продажи: {product.name}",
+                    "available": product.count,
+                    "is_active": product.is_active,
+                },
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         if product.count <= 0:
@@ -145,30 +164,121 @@ class CheckoutApi(UpdateAPIView):
     def update(self, request, *args, **kwargs):
         cart = self.get_object()
 
-        # Проверка для Deals
-        has_deals = cart.card_item.filter(
-            product__type='long'
+        missing_legal = missing_required_documents(
+            request.user,
+            action='checkout',
+        )
+        if missing_legal:
+            language = preferred_language_for_request(request)
+            return Response(
+                {
+                    'code': 'legal_consent_required',
+                    'error': 'Required legal consent is missing.',
+                    'documents': serialize_documents(
+                        missing_legal,
+                        language=language,
+                        request=request,
+                        user=request.user,
+                    ),
+                },
+                status=428,
+            )
+
+        # Универсальные контактные данные заказа
+        # Телефон обязателен для любого заказа.
+        # Адрес обязателен только если в корзине есть Deals с доставкой.
+        profile = getattr(request.user, 'profile', None)
+
+        phone = profile.phone.strip() if profile and profile.phone else ''
+        address = profile.address.strip() if profile and profile.address else ''
+        house_number = (
+            profile.house_number.strip()
+            if profile and profile.house_number
+            else ''
+        )
+        floor = (
+            profile.floor.strip()
+            if profile and profile.floor
+            else ''
+        )
+        delivery_latitude = (
+            profile.delivery_latitude
+            if profile
+            else None
+        )
+        delivery_longitude = (
+            profile.delivery_longitude
+            if profile
+            else None
+        )
+
+        requires_delivery_address = cart.card_item.filter(
+            product__type=Products.Type.LONG,
+            product__delivery_type__in=[
+                Products.DeliveryType.DELIVERY,
+                Products.DeliveryType.BOTH,
+            ],
         ).exists()
 
-        if has_deals:
-            profile = getattr(request.user, 'profile', None)
+        missing_phone = not is_valid_armenian_phone(phone, allow_blank=False)
+        missing_address = requires_delivery_address and not bool(address)
+        missing_house_number = (
+            requires_delivery_address and not bool(house_number)
+        )
+        missing_floor = (
+            requires_delivery_address and not bool(floor)
+        )
+        missing_location = (
+            requires_delivery_address
+            and (
+                delivery_latitude is None
+                or delivery_longitude is None
+            )
+        )
 
-            phone = profile.phone.strip() if profile and profile.phone else ''
-            address = profile.address.strip() if profile and profile.address else ''
+        if (
+            missing_phone
+            or missing_address
+            or missing_house_number
+            or missing_floor
+            or missing_location
+        ):
+            if requires_delivery_address:
+                error_message = (
+                    'Заполните личные данные для доставки: телефон, адрес, '
+                    'номер дома, этаж и точку на карте'
+                )
+            else:
+                error_message = (
+                    'Укажите корректный армянский номер телефона '
+                    'в формате +374XXXXXXXX'
+                )
 
-            if not phone or not address:
+            return Response(
+                {
+                    'code': 'contact_data_required',
+                    'error': error_message,
+                    'required_fields': {
+                        'phone': missing_phone,
+                        'address': missing_address,
+                        'house_number': missing_house_number,
+                        'floor': missing_floor,
+                        'location': missing_location,
+                    },
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        for item in cart.card_item.select_related('product').all():
+            if not item.product.is_available_for_sale():
                 return Response(
                     {
-                        "error": "Для заказа Deals нужно указать телефон и адрес доставки",
-                        "required_fields": {
-                            "phone": not bool(phone),
-                            "address": not bool(address),
-                        }
+                        "error": f"Товар снят с продажи: {item.product.name}",
+                        "product_slug": item.product.slug,
                     },
                     status=400
                 )
 
-        for item in cart.card_item.all():
             if item.quantity > item.product.count:
                 return Response(
                     {
@@ -178,9 +288,18 @@ class CheckoutApi(UpdateAPIView):
                     status=400
                 )
 
-        buyer_profile = getattr(request.user, 'profile', None)
-        buyer_phone = buyer_profile.phone if buyer_profile else ''
-        buyer_address = buyer_profile.address if buyer_profile else ''
+        # Freeze buyer + product data BEFORE stock, price or seller data can change.
+        capture_card_snapshot(cart, user=request.user)
+
+        buyer_phone = cart.buyer_phone_snapshot
+        buyer_address = cart.buyer_address_snapshot
+        buyer_house_number = cart.buyer_house_number_snapshot
+        buyer_floor = cart.buyer_floor_snapshot
+        buyer_delivery_latitude = cart.buyer_delivery_latitude_snapshot
+        buyer_delivery_longitude = cart.buyer_delivery_longitude_snapshot
+        buyer_delivery_additional_info = (
+            cart.buyer_delivery_additional_info_snapshot
+        )
 
         # 👇 ИЗМЕНЕННЫЙ БЛОК: группировка по компаниям
         items_by_company = {}
@@ -190,6 +309,9 @@ class CheckoutApi(UpdateAPIView):
             product.count -= item.quantity
             product.save()
 
+            # Appsosa: notify seller when Deals stock reaches zero
+            if str(product.type).lower() in ('long', 'deals') and product.count <= 0:
+                notify_product_out_of_stock(product.id)
             company = product.company
 
             if company.id not in items_by_company:
@@ -210,30 +332,22 @@ class CheckoutApi(UpdateAPIView):
             total_sum = sum(item.price_by_quantity for item in items)
 
             product_names = ', '.join(
-                item.product.name for item in items[:3]
+                item.snapshot_product_name for item in items[:3]
             )
 
             if len(items) > 3:
                 product_names += f' и ещё {len(items) - 3}'
 
             for seller in sellers:
-                phone_text = buyer_phone or tr(seller.user, 'not_specified')
-                
-                title = tr(seller.user, 'new_order_title')
-                body = tr(
-                    seller.user,
-                    'new_order_body',
-                    buyer=request.user.username,
-                    quantity=total_quantity,
-                    products=product_names,
-                    phone=phone_text,
-                )
-
                 Notification.objects.create(
                     user=seller.user,
                     type='order_created',
-                    title=title,
-                    body=body,
+                    title='Новый заказ',
+                    body=(
+                        f'{request.user.username} купил товаров: {total_quantity}. '
+                        f'{product_names}. '
+                        f'Тел: {buyer_phone or "не указан"}'
+                    ),
                     data={
                         'card_id': cart.id,
                         'company_id': company.id,
@@ -245,13 +359,24 @@ class CheckoutApi(UpdateAPIView):
                         'buyer_username': request.user.username,
                         'buyer_phone': buyer_phone,
                         'buyer_address': buyer_address,
+                        'buyer_house_number': buyer_house_number,
+                        'buyer_floor': buyer_floor,
+                        'buyer_delivery_latitude': buyer_delivery_latitude,
+                        'buyer_delivery_longitude': buyer_delivery_longitude,
+                        'buyer_delivery_additional_info': (
+                            buyer_delivery_additional_info
+                        ),
                     },
                 )
 
                 send_push_to_user(
                     user=seller.user,
-                    title=title,
-                    body=body,
+                    title='Новый заказ',
+                    body=(
+                        f'{request.user.username} купил товаров: {total_quantity}. '
+                        f'{product_names}. '
+                        f'Тел: {buyer_phone or "не указан"}'
+                    ),
                     data={
                         'type': 'order_created',
                         'card_id': str(cart.id),
@@ -263,14 +388,42 @@ class CheckoutApi(UpdateAPIView):
                         'buyer_username': request.user.username,
                         'buyer_phone': buyer_phone,
                         'buyer_address': buyer_address,
+                        'buyer_house_number': buyer_house_number,
+                        'buyer_floor': buyer_floor,
+                        'buyer_delivery_latitude': (
+                            '' if buyer_delivery_latitude is None
+                            else str(buyer_delivery_latitude)
+                        ),
+                        'buyer_delivery_longitude': (
+                            '' if buyer_delivery_longitude is None
+                            else str(buyer_delivery_longitude)
+                        ),
+                        'buyer_delivery_additional_info': (
+                            buyer_delivery_additional_info
+                        ),
                     },
                 )
 
         cart.status = 'paided'
         cart.save()
 
-        # Создаем напоминание об оценке после оформления заказа
-        create_review_reminder(cart)
+        # Reviews are HOT-only. Persist paid_at + 2h only for HOT items and
+        # never schedule a review reminder for a Deals-only checkout.
+        has_hot_review_item = False
+
+        for item in cart.card_item.select_related('product').all():
+            if str(item.snapshot_product_type or '').lower() != 'hot':
+                continue
+
+            has_hot_review_item = True
+            item.review_available_at = hot_product_review_available_at(
+                item.product,
+                cart,
+            )
+            item.save(update_fields=['review_available_at'])
+
+        if has_hot_review_item:
+            create_review_reminder(cart)
 
         companies = set()
         for item in cart.card_item.all():
@@ -283,7 +436,11 @@ class CheckoutApi(UpdateAPIView):
 
         Card.objects.create(user=request.user, status='pending')
 
-        return Response({"message": "Заказ оформлен"})
+        return Response({
+            "message": "Заказ оформлен",
+            "card_id": cart.id,
+            "order_number": cart.order_number,
+        })
 
 
 @extend_schema(
@@ -338,6 +495,16 @@ class UpdateQuantityApi(UpdateAPIView):
             )
 
         product = item.product
+
+        if not product.is_available_for_sale():
+            return Response(
+                {
+                    "error": f"Товар снят с продажи: {product.name}",
+                    "product_slug": product.slug,
+                },
+                status=400
+            )
+
         if quantity > product.count:
             return Response(
                 {
@@ -366,7 +533,7 @@ class PastOrdersApi(ListAPIView):
         return Card.objects.filter(
             user=self.request.user,
             status='paided'
-        ).order_by('-created')
+        ).order_by('-paid_at', '-id')
 
 
 @extend_schema(description="Статистика продавца")
@@ -374,9 +541,11 @@ class SellerStatsApi(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        companies = OrgProf.objects.filter(
-            user=request.user
-        ).values_list('company_id', flat=True)
+        companies = list(
+            OrgProf.objects.filter(
+                user=request.user
+            ).values_list('company_id', flat=True)
+        )
 
         if not companies:
             return Response({
@@ -387,23 +556,39 @@ class SellerStatsApi(APIView):
                 "reviews_count": 0,
             })
 
-        items = Card_item.objects.filter(
-            card__status='paided',
-            product__company_id__in=companies,
-            product__isnull=False,
-        ).select_related('product', 'card')
+        item_company_filter = (
+            Q(company_id_snapshot__in=companies)
+            | Q(
+                company_id_snapshot__isnull=True,
+                product__company_id__in=companies,
+            )
+        )
+
+        items = (
+            Card_item.objects
+            .filter(card__status='paided')
+            .filter(item_company_filter)
+            .select_related('product', 'card')
+        )
 
         total_sales = sum(item.price_by_quantity for item in items)
         sold_items = items.aggregate(total=Sum('quantity'))['total'] or 0
 
-        orders_count = Card.objects.filter(
-            status='paided',
-            card_item__product__company_id__in=companies,
-        ).distinct().count()
-
-        reviews = Review.objects.filter(
-            company_id__in=companies,
+        orders_count = (
+            Card.objects
+            .filter(status='paided')
+            .filter(
+                Q(card_item__company_id_snapshot__in=companies)
+                | Q(
+                    card_item__company_id_snapshot__isnull=True,
+                    card_item__product__company_id__in=companies,
+                )
+            )
+            .distinct()
+            .count()
         )
+
+        reviews = Review.objects.filter(company_id__in=companies)
 
         rating_sum = sum(review.rating for review in reviews)
         reviews_count = reviews.count()
@@ -423,46 +608,71 @@ class SellerSalesApi(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        companies = OrgProf.objects.filter(
-            user=request.user
-        ).values_list('company_id', flat=True)
+        companies = list(
+            OrgProf.objects.filter(
+                user=request.user
+            ).values_list('company_id', flat=True)
+        )
 
         if not companies:
             return Response([])
 
-        items = Card_item.objects.filter(
-            card__status='paided',
-            product__company_id__in=companies,
-            product__isnull=False,
-        ).select_related(
-            'card',
-            'card__user',
-            'card__user__profile',
-            'product',
-            'product__company',
-        ).order_by('-card__created')
+        items = (
+            Card_item.objects
+            .filter(card__status='paided')
+            .filter(
+                Q(company_id_snapshot__in=companies)
+                | Q(
+                    company_id_snapshot__isnull=True,
+                    product__company_id__in=companies,
+                )
+            )
+            .select_related(
+                'card',
+                'card__user',
+                'card__user__profile',
+                'product',
+                'product__company',
+            )
+            .order_by('-card__paid_at', '-card__id')
+        )
 
         grouped = {}
 
         for item in items:
             card = item.card
-            product = item.product
-            company = product.company
+            company_id = item.snapshot_company_id
+            if company_id is None:
+                continue
 
-            key = f'{card.id}_{company.id}'
+            company_name = item.snapshot_company_name
+            key = f'{card.id}_{company_id}'
 
             buyer_profile = getattr(card.user, 'profile', None)
+            buyer_username = (
+                card.buyer_username_snapshot
+                or (card.user.username if card.user else '')
+            )
+            buyer_phone = (
+                card.buyer_phone_snapshot
+                or (buyer_profile.phone if buyer_profile else '')
+            )
+            buyer_address = (
+                card.buyer_address_snapshot
+                or (buyer_profile.address if buyer_profile else '')
+            )
 
             if key not in grouped:
                 grouped[key] = {
                     'id': key,
                     'card_id': card.id,
-                    'company_id': company.id,
-                    'company_name': company.name,
-                    'created': card.created,
-                    'buyer': card.user.username if card.user else '',
-                    'buyer_phone': buyer_profile.phone if buyer_profile else '',
-                    'buyer_address': buyer_profile.address if buyer_profile else '',
+                    'order_number': card.order_number,
+                    'company_id': company_id,
+                    'company_name': company_name,
+                    'created': card.paid_at or card.created,
+                    'buyer': buyer_username,
+                    'buyer_phone': buyer_phone,
+                    'buyer_address': buyer_address,
                     'items_count': 0,
                     'total_quantity': 0,
                     'total': 0,
@@ -478,11 +688,13 @@ class SellerSalesApi(APIView):
 
             grouped[key]['products'].append({
                 'id': item.id,
-                'product_name': product.name,
-                'product_slug': product.slug,
+                'product_name': item.snapshot_product_name,
+                'product_slug': item.snapshot_product_slug,
+                'product_type': item.snapshot_product_type,
                 'quantity': item.quantity,
-                'price': float(product.get_discount_price),
+                'price': float(item.unit_price),
                 'total': float(item_total),
+                'product_snapshot': item.product_snapshot or {},
             })
 
         result = []
@@ -524,17 +736,26 @@ class SellerOrderDetailApi(APIView):
                 status=403
             )
 
-        items = Card_item.objects.filter(
-            card_id=card_id,
-            card__status='paided',
-            product__company_id=company_id,
-            product__isnull=False,
-        ).select_related(
-            'card',
-            'card__user',
-            'card__user__profile',
-            'product',
-            'product__company',
+        items = (
+            Card_item.objects
+            .filter(
+                card_id=card_id,
+                card__status='paided',
+            )
+            .filter(
+                Q(company_id_snapshot=company_id)
+                | Q(
+                    company_id_snapshot__isnull=True,
+                    product__company_id=company_id,
+                )
+            )
+            .select_related(
+                'card',
+                'card__user',
+                'card__user__profile',
+                'product',
+                'product__company',
+            )
         )
 
         if not items.exists():
@@ -544,8 +765,22 @@ class SellerOrderDetailApi(APIView):
             )
 
         first_item = items.first()
-        buyer = first_item.card.user
+        card = first_item.card
+        buyer = card.user
         buyer_profile = getattr(buyer, 'profile', None)
+
+        buyer_username = (
+            card.buyer_username_snapshot
+            or (buyer.username if buyer else '')
+        )
+        buyer_phone = (
+            card.buyer_phone_snapshot
+            or (buyer_profile.phone if buyer_profile else '')
+        )
+        buyer_address = (
+            card.buyer_address_snapshot
+            or (buyer_profile.address if buyer_profile else '')
+        )
 
         order_items = []
         total = 0
@@ -556,21 +791,35 @@ class SellerOrderDetailApi(APIView):
 
             order_items.append({
                 'id': item.id,
-                'product_name': item.product.name,
-                'product_slug': item.product.slug,
+                'product_name': item.snapshot_product_name,
+                'product_slug': item.snapshot_product_slug,
+                'product_type': item.snapshot_product_type,
                 'quantity': item.quantity,
-                'price': float(item.product.get_discount_price),
+                'price': float(item.unit_price),
                 'total': float(item_total),
+                'product_snapshot': item.product_snapshot or {},
             })
 
         return Response({
-            'card_id': first_item.card.id,
+            'card_id': card.id,
+            'order_number': card.order_number,
             'company_id': company_id,
-            'company_name': first_item.product.company.name,
-            'created': first_item.card.created,
-            'buyer': buyer.username,
-            'buyer_phone': buyer_profile.phone if buyer_profile else '',
-            'buyer_address': buyer_profile.address if buyer_profile else '',
+            'company_name': first_item.snapshot_company_name,
+            'created': card.paid_at or card.created,
+            'buyer': buyer_username,
+            'buyer_phone': buyer_phone,
+            'buyer_address': buyer_address,
+            'buyer_house_number': card.buyer_house_number_snapshot,
+            'buyer_floor': card.buyer_floor_snapshot,
+            'buyer_delivery_latitude': (
+                card.buyer_delivery_latitude_snapshot
+            ),
+            'buyer_delivery_longitude': (
+                card.buyer_delivery_longitude_snapshot
+            ),
+            'buyer_delivery_additional_info': (
+                card.buyer_delivery_additional_info_snapshot
+            ),
             'items': order_items,
             'total': float(total),
         })

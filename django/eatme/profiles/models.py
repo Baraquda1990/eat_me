@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.dispatch import receiver
 from django.db.models.signals import post_save
 from django.contrib.auth import get_user_model
@@ -15,6 +15,40 @@ class Profile(models.Model):
     phone = models.CharField(max_length=20, blank=True, verbose_name='Телефон')
     phone_verified = models.BooleanField(default=False, verbose_name='Телефон подтверждён')
     address=models.CharField(max_length=250,blank=True,verbose_name='Адрес')
+    house_number = models.CharField(
+        max_length=50,
+        blank=True,
+        default='',
+        verbose_name='Номер дома',
+    )
+    floor = models.CharField(
+        max_length=20,
+        blank=True,
+        default='',
+        verbose_name='Этаж',
+    )
+    delivery_latitude = models.FloatField(
+        null=True,
+        blank=True,
+        verbose_name='Широта доставки',
+    )
+    delivery_longitude = models.FloatField(
+        null=True,
+        blank=True,
+        verbose_name='Долгота доставки',
+    )
+    delivery_additional_info = models.TextField(
+        max_length=500,
+        blank=True,
+        default='',
+        verbose_name='Дополнительная информация для доставки',
+    )
+    avatar = models.ImageField(
+        upload_to='profiles/avatars/',
+        blank=True,
+        null=True,
+        verbose_name='Аватар',
+    )
 
     class Language(models.TextChoices):
         RU = 'ru', 'Русский'
@@ -46,11 +80,37 @@ class Profile(models.Model):
     
     def save(self, *args, **kwargs):
         """
-        Сохрание полей модели при их отсутствии заполнения
+        Сохраняет профиль и удаляет старый физический файл аватара,
+        если avatar был заменён или очищен.
         """
+        old_avatar_name = None
+
+        if self.pk:
+            previous = (
+                type(self)
+                .objects
+                .filter(pk=self.pk)
+                .only('avatar')
+                .first()
+            )
+            if previous is not None and previous.avatar:
+                old_avatar_name = previous.avatar.name
+
         if not self.slug:
             self.slug = unique_slugify(self, self.user.username.lower())
+
         super().save(*args, **kwargs)
+
+        new_avatar_name = self.avatar.name if self.avatar else None
+
+        if old_avatar_name and old_avatar_name != new_avatar_name:
+            storage = self._meta.get_field('avatar').storage
+
+            # Удаляем старый файл только после успешного commit БД.
+            transaction.on_commit(
+                lambda name=old_avatar_name, file_storage=storage:
+                    file_storage.delete(name),
+            )
     
     def __str__(self):
         """

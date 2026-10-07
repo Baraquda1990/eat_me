@@ -13,9 +13,12 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 from decouple import config
+import os
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
@@ -68,7 +71,10 @@ INSTALLED_APPS = [
     'reviews',
     'google_core',
     'google_for_flutter',
-    'seller_application'
+    'storages',
+    'seller_application',
+    'legal',
+    'feedback',
 ]
 
 MIDDLEWARE = [
@@ -215,6 +221,11 @@ LANGUAGE_CODE = 'ru-ru'
 
 TIME_ZONE = 'UTC'
 
+# Business / seller wall-clock time.
+# Seller publication and pickup UI use Yerevan time, while the database
+# continues to store aware datetimes in UTC.
+SELLER_TIME_ZONE = 'Asia/Yerevan'
+
 USE_I18N = True
 
 USE_TZ = True
@@ -226,6 +237,61 @@ USE_TZ = True
 STATIC_URL = 'static/'
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+R2_ACCESS_KEY_ID = config('R2_ACCESS_KEY_ID')
+R2_SECRET_ACCESS_KEY = config('R2_SECRET_ACCESS_KEY')
+R2_ENDPOINT_URL = config('R2_ENDPOINT_URL')
+
+R2_MEDIA_BUCKET = config(
+    'R2_MEDIA_BUCKET',
+    default='appsosa-media',
+)
+
+R2_PRIVATE_BUCKET = config(
+    'R2_PRIVATE_BUCKET',
+    default='appsosa-private',
+)
+R2_PUBLIC_DOMAIN = config('R2_PUBLIC_DOMAIN')
+
+STORAGES = {
+    'default': {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': {
+            'access_key': R2_ACCESS_KEY_ID,
+            'secret_key': R2_SECRET_ACCESS_KEY,
+            'bucket_name': R2_MEDIA_BUCKET,
+            'endpoint_url': R2_ENDPOINT_URL,
+            'region_name': 'auto',
+            'default_acl': None,
+            'file_overwrite': False,
+            'custom_domain': R2_PUBLIC_DOMAIN,
+            'querystring_auth': False,
+        },
+    },
+
+    'private': {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': {
+            'access_key': R2_ACCESS_KEY_ID,
+            'secret_key': R2_SECRET_ACCESS_KEY,
+            'bucket_name': R2_PRIVATE_BUCKET,
+            'endpoint_url': R2_ENDPOINT_URL,
+            'region_name': 'auto',
+            'default_acl': None,
+            'file_overwrite': False,
+
+            # Документы всегда через временную подписанную ссылку
+            'querystring_auth': True,
+            'querystring_expire': 600,
+        },
+    },
+
+    'staticfiles': {
+        'BACKEND': (
+            'django.contrib.staticfiles.storage.'
+            'StaticFilesStorage'
+        ),
+    },
+}
 
 CELERY_BROKER_URL = 'redis://127.0.0.1:6379/1'
 CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/1'
@@ -233,6 +299,13 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
+
+CELERY_BEAT_SCHEDULE = {
+    'publish-due-products-every-minute': {
+        'task': 'products.tasks.publish_due_products',
+        'schedule': 60.0,
+    },
+}
 
 USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
@@ -284,3 +357,17 @@ EMAIL_ADMIN = EMAIL_HOST_USER
 
 GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = config('GOOGLE_CLIENT_SECRET')
+
+#Настройка почты
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.yandex.ru'
+EMAIL_PORT = 465
+EMAIL_USE_SSL = True
+
+EMAIL_HOST_USER = 'betsignals777@yandex.kz'
+EMAIL_HOST_PASSWORD = 'cegvcjtnaghawvua'
+
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+SERVER_EMAIL = EMAIL_HOST_USER
+EMAIL_ADMIN = EMAIL_HOST_USER

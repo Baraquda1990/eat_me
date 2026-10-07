@@ -2,8 +2,9 @@ from pathlib import Path
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import FileExtensionValidator
+from django.core.validators import FileExtensionValidator, RegexValidator
 from django.db import models
+from core.storage_backends import get_private_storage
 
 
 def validate_document_size(file):
@@ -32,6 +33,18 @@ def seller_document_upload_path(instance, filename):
         f'{document_type}/'
         f'{instance.application_id}_{document_type}_{instance.pk or "new"}'
         f'{extension}'
+    )
+
+
+def seller_agreement_snapshot_upload_path(instance, filename):
+    """Финальный snapshot агентского договора, принятого продавцом."""
+    safe_version = (instance.version or '1.0').replace('.', '_')
+    accepted = instance.accepted_at
+    stamp = accepted.strftime('%Y%m%d_%H%M%S_%f') if accepted else 'pending'
+    return (
+        f'uploads/seller_applications/'
+        f'{instance.application_id}/agreements/'
+        f'agency_agreement_v{safe_version}_{stamp}.docx'
     )
 
 
@@ -192,8 +205,15 @@ class SellerApplication(models.Model):
     )
 
     tax_number = models.CharField(
-        max_length=50,
+        max_length=8,
         blank=True,
+        validators=[
+            RegexValidator(
+                regex=r'^[0-9]{8}$',
+                message='ИНН должен содержать ровно 8 цифр.',
+                code='invalid_tax_number',
+            ),
+        ],
         verbose_name='ИНН',
     )
 
@@ -452,6 +472,7 @@ class SellerApplicationDocument(models.Model):
     )
 
     file = models.FileField(
+        storage=get_private_storage,
         upload_to=seller_document_upload_path,
         validators=[
             FileExtensionValidator(
@@ -512,3 +533,45 @@ class SellerApplicationDocument(models.Model):
             f'{self.get_document_type_display()} — '
             f'заявка #{self.application_id}'
         )
+
+class SellerAgencyAgreementAcceptance(models.Model):
+    """Юридически значимая фиксация принятия агентского договора продавцом."""
+
+    class Language(models.TextChoices):
+        HY = 'hy', 'Հայերեն'
+        RU = 'ru', 'Русский'
+        EN = 'en', 'English'
+
+    application = models.ForeignKey(
+        SellerApplication,
+        on_delete=models.CASCADE,
+        related_name='agency_agreement_acceptances',
+        verbose_name='Заявка',
+    )
+    version = models.CharField(max_length=30, verbose_name='Версия договора')
+    language = models.CharField(
+        max_length=5,
+        choices=Language.choices,
+        default=Language.EN,
+        verbose_name='Язык интерфейса при принятии',
+    )
+    template_sha256 = models.CharField(max_length=64, verbose_name='SHA-256 шаблона')
+    document_sha256 = models.CharField(max_length=64, verbose_name='SHA-256 принятого документа')
+    snapshot = models.FileField(
+        storage=get_private_storage,
+        upload_to=seller_agreement_snapshot_upload_path,
+        verbose_name='Snapshot договора',
+    )
+    accepted_at = models.DateTimeField(verbose_name='Дата и время принятия')
+    ip_address = models.GenericIPAddressField(null=True, blank=True, verbose_name='IP-адрес')
+    user_agent = models.TextField(blank=True, verbose_name='User-Agent')
+    created = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
+    updated = models.DateTimeField(auto_now=True, verbose_name='Изменено')
+
+    class Meta:
+        ordering = ('-accepted_at', '-id')
+        verbose_name = 'Принятие агентского договора'
+        verbose_name_plural = 'Принятия агентских договоров'
+
+    def __str__(self):
+        return f'Заявка #{self.application_id} — договор v{self.version}'

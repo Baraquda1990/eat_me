@@ -5,6 +5,7 @@ from company.models import Company
 from profiles.models import OrgProf, Profile
 
 from .models import SellerApplication
+from .serializers import SellerApplicationSerializer
 from .services import approve_application, request_changes_application
 
 
@@ -88,3 +89,73 @@ class SellerApplicationApprovalTests(TestCase):
         self.assertEqual(first_company.address, 'Новый адрес')
         self.assertEqual(Company.objects.count(), 1)
         self.assertEqual(OrgProf.objects.count(), 1)
+
+
+class SellerAgencyAgreementTemplateTests(TestCase):
+    def test_template_is_filled_without_placeholders(self):
+        from io import BytesIO
+        from types import SimpleNamespace
+        from zipfile import ZipFile
+
+        from .agreement import render_agency_agreement
+
+        application = SimpleNamespace(
+            pk=99,
+            organization_name='Demo Vendor LLC',
+            address='10 Test Street, Yerevan',
+        )
+        rendered = render_agency_agreement(application)
+
+        with ZipFile(BytesIO(rendered.content)) as archive:
+            xml = archive.read('word/document.xml').decode('utf-8')
+
+        self.assertIn('Demo Vendor LLC', xml)
+        self.assertIn('10 Test Street, Yerevan', xml)
+        self.assertNotIn('__VENDOR_', xml)
+        self.assertNotIn('__AGREEMENT_DATE_', xml)
+        self.assertEqual(len(rendered.document_sha256), 64)
+        self.assertEqual(len(rendered.template_sha256), 64)
+
+class SellerApplicationTaxNumberValidationTests(TestCase):
+    def test_accepts_exactly_eight_digits(self):
+        serializer = SellerApplicationSerializer(
+            data={'tax_number': '01234567'},
+            partial=True,
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(
+            serializer.validated_data['tax_number'],
+            '01234567',
+        )
+
+    def test_rejects_short_tax_number(self):
+        serializer = SellerApplicationSerializer(
+            data={'tax_number': '1234567'},
+            partial=True,
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('tax_number', serializer.errors)
+
+    def test_rejects_long_tax_number(self):
+        serializer = SellerApplicationSerializer(
+            data={'tax_number': '123456789'},
+            partial=True,
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('tax_number', serializer.errors)
+
+    def test_rejects_non_digit_tax_number(self):
+        serializer = SellerApplicationSerializer(
+            data={'tax_number': '1234A678'},
+            partial=True,
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('tax_number', serializer.errors)
+
+    def test_blank_tax_number_is_allowed_while_draft_is_incomplete(self):
+        serializer = SellerApplicationSerializer(
+            data={'tax_number': ''},
+            partial=True,
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+

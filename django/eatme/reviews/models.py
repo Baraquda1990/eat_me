@@ -45,7 +45,7 @@ class Review(models.Model):
         validators=[MinValueValidator(1), MaxValueValidator(5)]
     )
 
-    comment = models.TextField(blank=True)
+    comment = models.TextField(blank=True,max_length=400)
 
     rating = models.DecimalField(
         max_digits=3,
@@ -75,3 +75,66 @@ class Review(models.Model):
 
     def __str__(self):
         return f'{self.company.name} - {self.rating}'
+
+
+class ReviewEditRequest(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Ожидает решения'
+        APPROVED = 'approved', 'Разрешено'
+        REJECTED = 'rejected', 'Запрещено'
+        USED = 'used', 'Использовано'
+
+    review = models.ForeignKey(
+        Review,
+        on_delete=models.CASCADE,
+        related_name='edit_requests',
+        verbose_name='Отзыв',
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='review_edit_requests',
+        verbose_name='Пользователь',
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+        verbose_name='Статус',
+    )
+    admin_comment = models.CharField(
+        max_length=500,
+        blank=True,
+        verbose_name='Комментарий администратора',
+    )
+    created = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='Создан',
+    )
+    decided_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Решение принято',
+    )
+    decided_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='review_edit_requests_decided',
+        verbose_name='Решил',
+    )
+    used_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Редактирование использовано',
+    )
+
+    class Meta:
+        ordering = ('-created', '-id')
+        verbose_name = 'Запрос на редактирование отзыва'
+        verbose_name_plural = 'Запросы на редактирование отзывов'
+
+    def __str__(self):
+        return f'#{self.pk} {self.review_id} {self.user} — {self.status}'

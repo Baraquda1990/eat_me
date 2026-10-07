@@ -7,6 +7,8 @@ from .views import (
     SellerApplicationDetailApi,
     SellerApplicationDocumentCreateApi,
     SellerApplicationDocumentDeleteApi,
+    SellerApplicationAgreementDownloadApi,
+    SellerApplicationAgreementPreviewApi,
     SellerApplicationSubmitApi,
 )
 
@@ -41,6 +43,16 @@ urlpatterns = [
         'seller-applications/documents/<int:pk>/',
         SellerApplicationDocumentDeleteApi.as_view(),
         name='seller-application-document-delete',
+    ),
+    path(
+        'seller-applications/<int:pk>/agreement/',
+        SellerApplicationAgreementDownloadApi.as_view(),
+        name='seller-application-agreement-download',
+    ),
+    path(
+        'seller-applications/<int:pk>/agreement/preview/',
+        SellerApplicationAgreementPreviewApi.as_view(),
+        name='seller-application-agreement-preview',
     ),
     path(
         'seller-applications/<int:pk>/submit/',

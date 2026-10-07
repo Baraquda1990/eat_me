@@ -12,6 +12,7 @@ class ProductsAdmin(admin.ModelAdmin):
         'price',
         'discount',
         'count',
+        'dine_in_only',
         'delivery_type',
         'is_promoted',
         'promotion_until',
@@ -23,6 +24,7 @@ class ProductsAdmin(admin.ModelAdmin):
 
     list_filter = (
         'type',
+        'dine_in_only',
         'delivery_type',
         'is_promoted',
         'company',
@@ -70,6 +72,7 @@ class ProductsAdmin(admin.ModelAdmin):
             {
                 'fields': (
                     'type',
+                    'dine_in_only',
                 )
             }
         ),
